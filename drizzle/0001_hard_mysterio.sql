@@ -1,0 +1,1 @@
+ALTER TABLE "claim" ADD CONSTRAINT "claim_supersedes_claim_id_claim_id_fk" FOREIGN KEY ("supersedes_claim_id") REFERENCES "public"."claim"("id") ON DELETE set null ON UPDATE no action;

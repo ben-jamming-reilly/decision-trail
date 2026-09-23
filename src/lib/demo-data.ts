@@ -1,0 +1,232 @@
+import type { Entity, Meeting } from "@/lib/domain";
+
+export const demoMeetings: Meeting[] = [
+  {
+    id: "11111111-1111-4111-8111-111111111111",
+    title: "Atlas kickoff",
+    startedAt: "2026-01-12T17:00:00.000Z",
+    participants: ["Maya Chen", "Jon Bell", "Priya Rao"],
+    source: "recall",
+    recallBotId: "demo-bot-001",
+    utteranceCount: 3,
+    utterances: [
+      {
+        id: "u1",
+        speaker: "Maya Chen",
+        startSeconds: 184,
+        endSeconds: 194,
+        text: "Let's target March 15 for the Atlas pilot with twelve design partners.",
+      },
+      {
+        id: "u2",
+        speaker: "Jon Bell",
+        startSeconds: 241,
+        endSeconds: 251,
+        text: "The identity migration is the biggest dependency on that date.",
+      },
+      {
+        id: "u3",
+        speaker: "Priya Rao",
+        startSeconds: 412,
+        endSeconds: 423,
+        text: "I can own partner onboarding and bring a draft plan next week.",
+      },
+    ],
+  },
+  {
+    id: "22222222-2222-4222-8222-222222222222",
+    title: "Atlas delivery review",
+    startedAt: "2026-02-03T18:30:00.000Z",
+    participants: ["Maya Chen", "Jon Bell", "Priya Rao"],
+    source: "recall",
+    recallBotId: "demo-bot-002",
+    utteranceCount: 3,
+    utterances: [
+      {
+        id: "u4",
+        speaker: "Jon Bell",
+        startSeconds: 95,
+        endSeconds: 107,
+        text: "Identity is two weeks behind, so I don't think March 15 is responsible anymore.",
+      },
+      {
+        id: "u5",
+        speaker: "Maya Chen",
+        startSeconds: 132,
+        endSeconds: 143,
+        text: "Agreed. The pilot date is April 2, and we'll start with eight partners.",
+      },
+      {
+        id: "u6",
+        speaker: "Priya Rao",
+        startSeconds: 380,
+        endSeconds: 392,
+        text: "Eight is the committed group, although Sales still believes we can support ten.",
+      },
+    ],
+  },
+  {
+    id: "33333333-3333-4333-8333-333333333333",
+    title: "Partner readiness check",
+    startedAt: "2026-02-18T16:00:00.000Z",
+    participants: ["Priya Rao", "Maya Chen", "Sam Ortiz"],
+    source: "recall",
+    recallBotId: "demo-bot-003",
+    utteranceCount: 2,
+    utterances: [
+      {
+        id: "u7",
+        speaker: "Priya Rao",
+        startSeconds: 205,
+        endSeconds: 219,
+        text: "All eight launch partners have confirmed, and the onboarding guide is complete.",
+      },
+      {
+        id: "u8",
+        speaker: "Sam Ortiz",
+        startSeconds: 298,
+        endSeconds: 309,
+        text: "I still see April 2 as at risk unless identity passes load testing by Friday.",
+      },
+    ],
+  },
+];
+
+const evidence = (id: string, meetingIndex: number, utteranceIndex: number) => {
+  const meeting = demoMeetings[meetingIndex];
+  const utterance = meeting.utterances[utteranceIndex];
+  return {
+    id,
+    meetingId: meeting.id,
+    meetingTitle: meeting.title,
+    meetingDate: meeting.startedAt,
+    speaker: utterance.speaker,
+    startSeconds: utterance.startSeconds,
+    endSeconds: utterance.endSeconds,
+    quote: utterance.text,
+  };
+};
+
+export const demoEntities: Entity[] = [
+  {
+    id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+    slug: "atlas-pilot",
+    name: "Atlas pilot",
+    kind: "initiative",
+    description:
+      "A multi-partner pilot whose scope and launch date evolved across planning meetings.",
+    aliases: ["Atlas", "pilot"],
+    claimCount: 5,
+    activeClaimCount: 3,
+    updatedAt: "2026-02-18T16:05:00.000Z",
+    claims: [
+      {
+        id: "c1",
+        text: "The Atlas pilot was targeted for March 15 with twelve design partners.",
+        state: "superseded",
+        confidence: 0.99,
+        recordedAt: "2026-01-12T17:03:04.000Z",
+        evidence: [evidence("e1", 0, 0)],
+      },
+      {
+        id: "c2",
+        text: "The Atlas pilot is scheduled for April 2 with eight launch partners.",
+        state: "active",
+        confidence: 0.98,
+        recordedAt: "2026-02-03T18:32:12.000Z",
+        supersedesClaimId: "c1",
+        evidence: [evidence("e2", 1, 1), evidence("e3", 2, 0)],
+      },
+      {
+        id: "c3",
+        text: "Sales believes the pilot may be able to support ten partners.",
+        state: "disputed",
+        confidence: 0.83,
+        recordedAt: "2026-02-03T18:36:20.000Z",
+        evidence: [evidence("e4", 1, 2)],
+      },
+      {
+        id: "c4",
+        text: "All eight launch partners have confirmed participation.",
+        state: "active",
+        confidence: 0.96,
+        recordedAt: "2026-02-18T16:03:25.000Z",
+        evidence: [evidence("e5", 2, 0)],
+      },
+      {
+        id: "c5",
+        text: "The April 2 date remains at risk pending identity load testing.",
+        state: "active",
+        confidence: 0.91,
+        recordedAt: "2026-02-18T16:04:58.000Z",
+        evidence: [evidence("e6", 2, 1)],
+      },
+    ],
+  },
+  {
+    id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+    slug: "identity-migration",
+    name: "Identity migration",
+    kind: "initiative",
+    description: "The principal technical dependency for Atlas.",
+    aliases: ["identity"],
+    claimCount: 3,
+    activeClaimCount: 2,
+    updatedAt: "2026-02-18T16:05:00.000Z",
+    claims: [
+      {
+        id: "c6",
+        text: "Identity migration is the largest dependency on the Atlas launch date.",
+        state: "active",
+        confidence: 0.95,
+        recordedAt: "2026-01-12T17:04:01.000Z",
+        evidence: [evidence("e7", 0, 1)],
+      },
+      {
+        id: "c7",
+        text: "Identity migration was two weeks behind as of February 3.",
+        state: "active",
+        confidence: 0.98,
+        recordedAt: "2026-02-03T18:31:35.000Z",
+        evidence: [evidence("e8", 1, 0)],
+      },
+      {
+        id: "c8",
+        text: "Identity would be ready in time for the March 15 target.",
+        state: "superseded",
+        confidence: 0.71,
+        recordedAt: "2026-01-12T17:04:05.000Z",
+        evidence: [evidence("e9", 0, 1)],
+      },
+    ],
+  },
+  {
+    id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+    slug: "priya-rao",
+    name: "Priya Rao",
+    kind: "person",
+    description: "Owner of launch-partner onboarding for Atlas.",
+    aliases: ["Priya"],
+    claimCount: 2,
+    activeClaimCount: 2,
+    updatedAt: "2026-02-18T16:05:00.000Z",
+    claims: [
+      {
+        id: "c9",
+        text: "Priya owns partner onboarding for the Atlas pilot.",
+        state: "active",
+        confidence: 0.97,
+        recordedAt: "2026-01-12T17:06:52.000Z",
+        evidence: [evidence("e10", 0, 2)],
+      },
+      {
+        id: "c10",
+        text: "Priya completed the onboarding guide by February 18.",
+        state: "active",
+        confidence: 0.96,
+        recordedAt: "2026-02-18T16:03:25.000Z",
+        evidence: [evidence("e11", 2, 0)],
+      },
+    ],
+  },
+];
