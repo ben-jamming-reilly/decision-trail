@@ -25,9 +25,13 @@ export class RecallClient {
     botId?: string;
     title?: string;
   }): Promise<TranscriptInput> {
+    // https://docs.recall.ai/reference/transcript_retrieve
     const artifact = await this.request<RecallTranscriptArtifact>(
       `/api/v1/transcript/${encodeURIComponent(args.transcriptId)}/`,
     );
+    // Recall download URLs are presigned and expire, so consume this one now
+    // and persist the normalized transcript rather than the URL.
+    // https://docs.recall.ai/docs/download-urls
     const response = await this.fetcher(artifact.data.download_url);
     if (!response.ok) {
       throw new Error(`Recall transcript download failed (${response.status})`);
@@ -53,6 +57,7 @@ export class RecallClient {
     captureId: string;
     trailId: string;
   }) {
+    // https://docs.recall.ai/reference/bot_create
     return this.request<{ id: string }>("/api/v1/bot/", {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -60,6 +65,8 @@ export class RecallClient {
         meeting_url: args.meetingUrl,
         bot_name: "Decision Trail",
         join_at: args.joinAt,
+        // Bot, recording, and transcript webhooks include this metadata. The
+        // application capture ID is the durable correlation key.
         metadata: {
           trailId: args.trailId,
           meetingId: args.captureId,
@@ -80,10 +87,12 @@ export class RecallClient {
   }
 
   async getBot(botId: string) {
+    // https://docs.recall.ai/reference/bot_retrieve
     return this.request<RecallBot>(`/api/v1/bot/${encodeURIComponent(botId)}/`);
   }
 
   async createAsyncTranscript(recordingId: string, keyTerms: string[]) {
+    // https://docs.recall.ai/reference/recording_create_transcript_create
     return this.request<{ id: string }>(
       `/api/v1/recording/${encodeURIComponent(recordingId)}/create_transcript/`,
       {
@@ -103,6 +112,7 @@ export class RecallClient {
   }
 
   async getFreshVideoUrl(botId: string) {
+    // Fetch the bot each time instead of storing a presigned media URL.
     const bot = await this.getBot(botId);
     const video = bot.recordings
       ?.flatMap((recording) => recording.media_shortcuts?.video_mixed ?? [])
@@ -122,6 +132,8 @@ export class RecallClient {
       headers.set("accept", "application/json");
       response = await this.fetcher(url, { ...init, headers });
       if (![429, 503, 507].includes(response.status) || attempt === 5) break;
+      // Recall uses Retry-After in seconds. Capacity errors can take longer to
+      // clear than rate limits, so give 507 responses a larger fallback.
       const retryAfter = Number(response.headers.get("retry-after"));
       const baseSeconds = Number.isFinite(retryAfter)
         ? retryAfter
@@ -173,6 +185,9 @@ function participantIdentity(
   participant: RecallTranscriptSegment["participant"],
   speaker: string,
 ) {
+  // Display names change and can collide. Prefer an address supplied by a
+  // calendar bot, then Zoom's stable conference user ID, and use the visible
+  // name only as an explicitly weak fallback.
   const email = participant?.email?.trim().toLowerCase();
   if (email) return `email:${email}`;
   const zoomId =

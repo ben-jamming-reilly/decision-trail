@@ -12,7 +12,3 @@ export function getDecisionModel() {
   const provider = createOpenAI({ apiKey });
   return provider.responses(process.env.OPENAI_MODEL?.trim() || DEFAULT_MODEL);
 }
-
-export function getDecisionModelName() {
-  return process.env.OPENAI_MODEL?.trim() || DEFAULT_MODEL;
-}

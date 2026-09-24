@@ -66,6 +66,8 @@ export async function processRecallWebhook(event: RecallWebhookEvent) {
   if (event.event === "recording.done") {
     const recordingId = event.data?.recording?.id;
     if (!recordingId) throw new Error("recording.done had no recording id");
+    // Bias post-meeting transcription with names and terms already established
+    // in this trail; vocabulary from other trails must not leak into it.
     const keyTerms = await repository.getTrailVocabulary(capture.trailId);
     const transcript = await getRecallClient().createAsyncTranscript(
       recordingId,
@@ -83,6 +85,8 @@ export async function processRecallWebhook(event: RecallWebhookEvent) {
   }
 
   if (event.event === "transcript.done") {
+    // Webhooks can be retried. Once a capture points at its durable meeting,
+    // reprocessing would only duplicate extraction work.
     if (capture.meetingId) return;
     const transcriptId = event.data?.transcript?.id;
     if (!transcriptId) throw new Error("transcript.done had no transcript id");
@@ -114,6 +118,7 @@ async function findCapture(event: RecallWebhookEvent) {
     const capture = await repository.getCapture(captureId);
     if (capture) return capture;
   }
+  // Older or manually-created bots may not carry application metadata.
   const botId = event.data?.bot?.id;
   return botId ? repository.getCaptureByBotId(botId) : null;
 }
@@ -136,6 +141,8 @@ async function processBotEvent(
     return;
   }
   if (capture.status === "ready" || capture.status === "failed") return;
+  // Bot events may arrive late or out of order. Never move a capture backward
+  // after its recording has entered the post-meeting pipeline.
   if (capture.status === "processing" && status !== "processing") return;
   const eventAt = event.data?.data?.updated_at;
   if (

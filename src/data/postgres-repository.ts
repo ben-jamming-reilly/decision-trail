@@ -250,6 +250,8 @@ export class PostgresKnowledgeRepository implements KnowledgeRepository {
   }
 
   async recordWebhook(eventId: string, eventType: string, payload: unknown) {
+    // Recall delivery IDs are unique. The insert result tells the route whether
+    // this delivery owns processing or is a retry that can be acknowledged.
     const rows = await this.db
       .insert(webhookEvent)
       .values({ id: eventId, eventType, payload })
@@ -284,6 +286,8 @@ export class PostgresKnowledgeRepository implements KnowledgeRepository {
   }
 
   async getTrailVocabulary(trailId: string) {
+    // Keep transcription bias scoped to one meeting series. Cross-trail names
+    // would improve neither accuracy nor tenant isolation.
     const [subjects, speakers] = await Promise.all([
       this.db
         .selectDistinct({ name: entity.name, aliases: entity.aliases })
@@ -378,6 +382,8 @@ export class PostgresKnowledgeRepository implements KnowledgeRepository {
           participants,
         })
         .onConflictDoUpdate({
+          // `recallTranscriptId` makes webhook retries and manual sync converge
+          // on the same durable meeting.
           target: meeting.recallTranscriptId,
           set: { trailId: input.trailId, title: input.title, participants },
         })
@@ -419,6 +425,8 @@ export class PostgresKnowledgeRepository implements KnowledgeRepository {
         .select({ id: utterance.id })
         .from(utterance)
         .where(eq(utterance.meetingId, meetingId));
+      // Never allow the model to attach a claim to an utterance from another
+      // meeting, even if it returns a syntactically valid UUID.
       const validEvidence = new Set(meetingUtterances.map((item) => item.id));
       let insertedClaims = 0;
 
@@ -472,6 +480,8 @@ export class PostgresKnowledgeRepository implements KnowledgeRepository {
             relatedClaim &&
             (relationship === "reaffirms" || relationship === "resolves")
           ) {
+            // Reaffirmation and resolution extend an existing claim's history;
+            // they do not create a second claim with the same meaning.
             await tx
               .insert(claimEvidence)
               .values(
@@ -514,6 +524,8 @@ export class PostgresKnowledgeRepository implements KnowledgeRepository {
               ),
             );
           if (duplicate) {
+            // Exact text can recur across retries or meetings. Preserve the new
+            // evidence without duplicating the claim itself.
             await tx
               .insert(claimEvidence)
               .values(
@@ -554,6 +566,8 @@ export class PostgresKnowledgeRepository implements KnowledgeRepository {
           });
 
           if (relationship === "supersedes" && relatedClaim) {
+            // State change and its audit transition stay in this transaction so
+            // readers never see both claims active after a partial write.
             await tx
               .update(claim)
               .set({ state: "superseded" })
@@ -596,6 +610,8 @@ export class PostgresKnowledgeRepository implements KnowledgeRepository {
           : inArray(claim.entityId, entityIds),
       )
       .orderBy(desc(claim.recordedAt));
+    // The joins return one row per evidence passage. Fold them back into one
+    // claim while retaining every source passage in chronological claim order.
     for (const row of rows) {
       let item = result
         .get(row.claim.entityId)

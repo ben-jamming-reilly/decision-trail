@@ -54,6 +54,7 @@ export async function POST(request: Request) {
       ? new Date(joinAt).toISOString()
       : new Date().toISOString();
     const repository = getRepository();
+    // Save first so API failures remain visible and retryable in Conversations.
     const capture = await repository.createCapture({
       trailId,
       title,

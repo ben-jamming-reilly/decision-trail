@@ -14,6 +14,7 @@ import { demoEntities, demoMeetings } from "@/lib/demo-data";
 import { neutralTemplate } from "@/lib/knowledge-template";
 
 const db = getDb();
+// Stable IDs let the seed update the demonstration in place on every run.
 const stableUuid = (value: number) =>
   `00000000-0000-4000-8000-${String(value).padStart(12, "0")}`;
 

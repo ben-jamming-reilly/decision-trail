@@ -1,10 +1,7 @@
 node_modules/
 .next/
-.open-next/
-.wrangler/
 .env*
 !.env.example
-.dev.vars
 coverage/
 *.log
 *.tsbuildinfo

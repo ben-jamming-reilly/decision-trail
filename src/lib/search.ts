@@ -34,6 +34,8 @@ export function scoreSearchResult(
   const claimText = values.claim.toLowerCase();
   const entityName = values.entityName.toLowerCase();
   const entityDescription = values.entityDescription.toLowerCase();
+  // Claim text is the strongest evidence; entity metadata broadens recall when
+  // the user's wording names the subject rather than the statement itself.
   return terms.reduce(
     (score, term) =>
       score +

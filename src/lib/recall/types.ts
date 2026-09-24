@@ -36,7 +36,7 @@ export interface RecallTranscriptArtifact {
   metadata?: Record<string, unknown>;
 }
 
-export interface RecallMediaArtifact {
+interface RecallMediaArtifact {
   id: string;
   status?: { code?: string };
   data?: { download_url?: string };

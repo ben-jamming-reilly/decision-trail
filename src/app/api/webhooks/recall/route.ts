@@ -17,6 +17,8 @@ export async function POST(request: Request) {
       { status: 503 },
     );
 
+  // Signature verification must see the exact bytes Recall sent, before JSON
+  // parsing or any other transformation.
   const rawBody = await request.text();
   let verificationHeaders;
   try {
@@ -36,6 +38,8 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid event" }, { status: 400 });
 
   const repository = getRepository();
+  // The delivery ID is the idempotency key. Persist it before acknowledging so
+  // retries cannot run the same side effects twice.
   const accepted = await repository.recordWebhook(
     verificationHeaders.id,
     payload.event,
@@ -45,6 +49,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: true, duplicate: true });
   }
 
+  // Acknowledge promptly, then finish transcript and AI work after the response.
   after(async () => {
     try {
       await processRecallWebhook(payload);

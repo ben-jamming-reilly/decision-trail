@@ -8,6 +8,8 @@ export function getRepository(): KnowledgeRepository {
   try {
     return new PostgresKnowledgeRepository(getDb());
   } catch (error) {
+    // An explicit production setting must fail closed. With no mode selected,
+    // falling back keeps the credential-free walkthrough runnable.
     if (process.env.DEMO_MODE === "false") throw error;
     return new DemoKnowledgeRepository();
   }

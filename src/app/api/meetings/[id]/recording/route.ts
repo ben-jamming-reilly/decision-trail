@@ -20,6 +20,8 @@ export async function GET(
     );
   }
   try {
+    // Recall media URLs are presigned and expire. Resolve one on demand and
+    // prevent browsers or intermediaries from caching it.
     const url = await getRecallClient().getFreshVideoUrl(meeting.recallBotId);
     if (!url) {
       return NextResponse.json(

@@ -1,11 +1,11 @@
-export interface EntityKindTemplate {
+interface EntityKindTemplate {
   key: string;
   label: string;
   description: string;
   suggestedQuestions: string[];
 }
 
-export interface KnowledgeTemplate {
+interface KnowledgeTemplate {
   id: string;
   name: string;
   description: string;

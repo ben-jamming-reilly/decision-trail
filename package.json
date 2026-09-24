@@ -8,9 +8,6 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "build:cf": "opennextjs-cloudflare build",
-    "preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
-    "deploy": "opennextjs-cloudflare build && opennextjs-cloudflare deploy",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "lint": "eslint .",
@@ -24,7 +21,6 @@
   "dependencies": {
     "@ai-sdk/openai": "^4.0.74",
     "@base-ui/react": "^1.5.0",
-    "@opennextjs/cloudflare": "1.16.2",
     "ai": "^7.0.113",
     "clsx": "^2.1.1",
     "drizzle-orm": "^0.44.5",
@@ -50,7 +46,6 @@
     "tailwindcss": "^4.1.13",
     "tsx": "^4.20.5",
     "typescript": "^5.9.2",
-    "vitest": "^3.2.4",
-    "wrangler": "4.85.0"
+    "vitest": "^3.2.4"
   }
 }

@@ -189,6 +189,8 @@ export const claimEvidence = pgTable(
   ],
 );
 
+// Claim state is mutable for fast reads; this append-oriented table preserves
+// why and when each lifecycle transition happened.
 export const claimTransition = pgTable(
   "claim_transition",
   {
@@ -210,6 +212,7 @@ export const claimTransition = pgTable(
 );
 
 export const webhookEvent = pgTable("webhook_event", {
+  // Recall's delivery ID doubles as the idempotency key.
   id: text("id").primaryKey(),
   eventType: text("event_type").notNull(),
   payload: jsonb("payload").notNull(),

@@ -5,6 +5,8 @@ import { getRecallClient } from "@/lib/recall";
 
 export const runtime = "nodejs";
 
+// Development recovery path for missed webhooks. Deployed environments should
+// use verified webhooks as the source of truth for this lifecycle.
 export async function POST(
   _request: Request,
   { params }: { params: Promise<{ id: string }> },
@@ -48,6 +50,8 @@ export async function POST(
       !capture.transcriptId &&
       !transcript?.id
     ) {
+      // Only request transcription when neither local nor Recall state shows an
+      // existing transcript; Create Async Transcript is a paid side effect.
       const keyTerms = await repository.getTrailVocabulary(capture.trailId);
       const created = await getRecallClient().createAsyncTranscript(
         recording.id,
@@ -83,6 +87,7 @@ export async function POST(
       transcript.status?.code === "done" &&
       !capture.meetingId
     ) {
+      // A stored meeting ID makes transcript ingestion idempotent across polls.
       const input = await getRecallClient().getCompletedTranscript({
         trailId: capture.trailId,
         transcriptId: transcript.id,

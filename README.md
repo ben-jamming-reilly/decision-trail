@@ -4,8 +4,6 @@ Decision Trail is a conversation-first memory for product and engineering teams.
 
 Unlike a single-meeting notes app, Decision Trail keeps history across conversations. Every extracted claim links to an exact speaker, timestamp, and transcript passage; newer claims can supersede earlier ones without erasing the original evidence.
 
-The included walkthrough follows one enterprise feature across three meetings: customer discovery establishes demand for bulk export, product planning chooses a CSV-based V1, and engineering review uncovers a security dependency that changes the launch date.
-
 ## Prerequisites
 
 The seeded walkthrough only requires:
@@ -54,8 +52,7 @@ The fastest way to review the project is the read-only seeded walkthrough. It do
    - **Why was the launch delayed?**
    - **What changed about the target date?**
    - **Which customer conversations influenced this requirement?**
-5. Open **Enterprise bulk export** to compare active, disputed, resolved, and superseded claims.
-6. Follow an evidence link to the exact speaker and timestamp in the source transcript.
+5. Follow an evidence link to the exact speaker and timestamp in the source transcript.
 
 Demo mode is an in-process fixture, not a second datastore. Live data is persisted in PostgreSQL.
 
@@ -163,18 +160,11 @@ Cross-meeting questions first retrieve deterministic claim matches, then stream 
 - [`src/data/`](src/data/): demo and PostgreSQL repository implementations
 - [`src/db/schema/knowledge.ts`](src/db/schema/knowledge.ts): durable claims, evidence, transitions, meetings, and webhook records
 
-The app uses Next.js 16, React 19, PostgreSQL, Drizzle ORM, the Vercel AI SDK, OpenAI Structured Outputs, Recall.ai, and OpenNext for Cloudflare. 
+The app uses Next.js 16, React 19, PostgreSQL, Drizzle ORM, the Vercel AI SDK, OpenAI Structured Outputs, and Recall.ai.
 
 ## Verification
 
 ```bash
 pnpm check       # formatting, lint, types, and tests
 pnpm build       # Next.js production build
-pnpm build:cf    # OpenNext Cloudflare build
 ```
-
-## Deployment
-
-OpenNext configuration is checked in for Cloudflare Workers. Create a Hyperdrive binding named `HYPERDRIVE`, add secrets with `wrangler secret put`, and uncomment the binding in `wrangler.jsonc`. Node hosts can use `DATABASE_URL` directly. Application data does not use Cloudflare KV, D1, or R2.
-
-For recurring meetings in production, replace ad-hoc `join_at` scheduling with [Recall Calendar V2](https://docs.recall.ai/docs/calendar-v2) while keeping the same trail and meeting metadata through the downstream recording webhook flow.

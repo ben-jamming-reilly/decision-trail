@@ -6,6 +6,7 @@ export async function ingestTranscript(
   repository: KnowledgeRepository,
   transcript: TranscriptInput,
 ) {
+  // The transcript is useful without AI and must survive a provider failure.
   const meetingId = await repository.saveTranscript(transcript);
   if (!isAIConfigured()) {
     return { meetingId, extractedClaims: 0, analysisError: undefined };

@@ -1,4 +1,4 @@
-export const DEFAULT_TRAIL_ID = "decision-trail";
+const DEFAULT_TRAIL_ID = "decision-trail";
 
 export function normalizeTrailId(value: unknown) {
   const trailId = typeof value === "string" ? value.trim() : DEFAULT_TRAIL_ID;

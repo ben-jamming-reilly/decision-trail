@@ -7,6 +7,8 @@ import type {
   KnowledgeRepository,
 } from "@/lib/repository";
 
+// Structured output keeps entity matching, evidence IDs, and claim transitions
+// machine-checkable instead of recovering them from free-form prose.
 const extractionSchema = z.object({
   entities: z.array(
     z.object({
@@ -105,6 +107,8 @@ Do not infer unstated motives or commitments. Return an empty entities array whe
     },
   });
 
+  // Model output is untrusted even with a schema. Drop invented evidence and
+  // references to memory that was not included in this request.
   const validUtteranceIds = new Set(meeting.utterances.map((item) => item.id));
   const existingSlugs = new Set(existing.map((item) => item.slug));
   const existingClaimIds = new Set(

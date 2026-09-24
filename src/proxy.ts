@@ -8,6 +8,8 @@ export function proxy(request: NextRequest) {
     return NextResponse.next();
   }
 
+  // The public tunnel exists only for Recall. Do not expose the unauthenticated
+  // application UI or bot-creation routes on that hostname.
   if (
     request.method === "POST" &&
     request.nextUrl.pathname === RECALL_WEBHOOK_PATH

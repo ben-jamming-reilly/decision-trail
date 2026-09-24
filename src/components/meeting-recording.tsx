@@ -12,12 +12,14 @@ export function MeetingRecording({ meetingId }: { meetingId: string }) {
   const initialSeek = useRef<number | undefined>(undefined);
 
   useEffect(() => {
+    // Evidence links use ?t= so a shared URL opens at the cited passage.
     const value = Number(new URLSearchParams(window.location.search).get("t"));
     if (Number.isFinite(value) && value >= 0) initialSeek.current = value;
   }, []);
 
   useEffect(() => {
     let cancelled = false;
+    // The server resolves a fresh presigned Recall URL on every page load.
     fetch(`/api/meetings/${meetingId}/recording`, { cache: "no-store" })
       .then(async (response) => {
         const payload = (await response.json()) as {
@@ -41,6 +43,8 @@ export function MeetingRecording({ meetingId }: { meetingId: string }) {
   }, [meetingId]);
 
   useEffect(() => {
+    // Transcript controls and the player are separate components; a local event
+    // keeps seeking client-side without coupling either component to the other.
     const seek = (event: Event) => {
       const seconds = (event as CustomEvent<number>).detail;
       if (!videoRef.current || !Number.isFinite(seconds)) return;

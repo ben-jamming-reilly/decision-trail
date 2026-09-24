@@ -1,11 +1,12 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 
-export interface RecallVerificationHeaders {
+interface RecallVerificationHeaders {
   id: string;
   timestamp: string;
   signature: string;
 }
 
+/** Recall signs the unmodified body as `id.timestamp.body` with HMAC-SHA256. */
 export function readRecallHeaders(headers: Headers): RecallVerificationHeaders {
   const id = headers.get("webhook-id") ?? headers.get("svix-id") ?? "";
   const timestamp =
@@ -38,6 +39,7 @@ export function verifyRecallWebhook(args: {
   const timestamp = Number(headers.timestamp);
   if (!Number.isSafeInteger(timestamp))
     throw new Error("Invalid webhook timestamp");
+  // Reject valid signatures outside the replay window before doing any work.
   if (Math.abs(nowSeconds - timestamp) > toleranceSeconds) {
     throw new Error("Webhook timestamp is outside the replay window");
   }
@@ -48,6 +50,7 @@ export function verifyRecallWebhook(args: {
     .digest();
 
   const matches = headers.signature.split(" ").some((versioned) => {
+    // The header can contain multiple space-separated `v1,<signature>` pairs.
     const [version, value] = versioned.split(",", 2);
     if (version !== "v1" || !value) return false;
     const passed = Buffer.from(value, "base64");

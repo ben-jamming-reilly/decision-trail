@@ -66,6 +66,8 @@ export function ActiveRecording({
   const [refreshError, setRefreshError] = useState<string>();
 
   useEffect(() => {
+    // Recall pushes lifecycle changes to the server, not the browser. A light
+    // poll keeps this durable page current while webhooks update the capture.
     if (capture.status === "ready" || capture.status === "failed") return;
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout>;

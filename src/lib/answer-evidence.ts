@@ -1,6 +1,8 @@
 import type { QueryResult } from "@/lib/domain";
 
-export function selectAnswerResults(results: QueryResult[]) {
+function selectAnswerResults(results: QueryResult[]) {
+  // This ordering is shared by the model context and citation rendering. Keep
+  // it deterministic so a source number always opens the passage the model saw.
   return results
     .slice(0, 8)
     .toSorted((a, b) => b.claim.recordedAt.localeCompare(a.claim.recordedAt));
