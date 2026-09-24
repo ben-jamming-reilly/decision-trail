@@ -1,191 +1,175 @@
 import Link from "next/link";
-import { ArrowIcon } from "@/components/icons";
+import { LocalDateTime } from "@/components/local-date-time";
 import { NewMeetingDialog } from "@/components/new-meeting-dialog";
-import { QueryBox } from "@/components/query-box";
 import { StatusPill } from "@/components/status-pill";
 import { getRepository } from "@/data";
-import { formatDate } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
 export default async function OverviewPage() {
   const repository = getRepository();
-  const [stats, entities, meetings] = await Promise.all([
-    repository.getStats(),
+  const [entities, meetings] = await Promise.all([
     repository.listEntities(),
     repository.listMeetings(),
   ]);
-  const [featured, ownership, risks] = await Promise.all([
-    repository.getEntity("enterprise-bulk-export"),
-    repository.getEntity("bulk-export-ownership"),
-    repository.getEntity("permission-aware-export"),
-  ]);
+  const detailedEntities = (
+    await Promise.all(
+      entities.slice(0, 12).map((entity) => repository.getEntity(entity.slug)),
+    )
+  ).filter((entity) => entity !== null);
+  const claims = detailedEntities
+    .flatMap((entity) => entity.claims.map((claim) => ({ claim, entity })))
+    .sort(
+      (left, right) =>
+        new Date(right.claim.recordedAt).getTime() -
+        new Date(left.claim.recordedAt).getTime(),
+    );
+  const currentClaims = claims
+    .filter(({ claim }) => claim.state === "active")
+    .slice(0, 5);
+  const recentChanges = claims
+    .filter(({ claim }) => claim.state !== "active" || claim.supersedesClaimId)
+    .slice(0, 5);
 
   return (
-    <div className="page-wrap">
-      <section className="dashboard-header">
-        <div>
-          <p className="eyebrow">Conversation-first company memory</p>
-          <h1>Decision Trail</h1>
-          <p>
-            Recall captures what happened in each conversation. Decision Trail
-            turns those conversations into the company&apos;s evolving
-            memory—what it currently believes, what changed, and the evidence
-            behind it.
+    <div className="mx-auto w-[calc(100%-28px)] max-w-[1040px] pt-6 pb-16 sm:w-[calc(100%-56px)] sm:pt-8">
+      <header className="mb-6 block items-center justify-between gap-6 border-b border-border pb-6 sm:flex">
+        <div className="max-w-[620px]">
+          <h1 className="text-[26px] leading-tight font-[650] tracking-[-0.025em]">
+            Overview
+          </h1>
+          <p className="mt-1.5 leading-6 text-muted-foreground">
+            Current decisions, recent changes, and the conversations behind
+            them.
           </p>
         </div>
-        <div className="dashboard-actions">
-          <div className="integration-badge">
-            <span />
-            Live Recall capture ready
-          </div>
+        <div className="mt-4 shrink-0 sm:mt-0">
           <NewMeetingDialog />
         </div>
-      </section>
+      </header>
 
-      <section className="demo-boundary" aria-label="Demo data boundaries">
-        <div>
-          <strong>Seeded decision intelligence</strong>
-          <p>
-            This walkthrough uses an extracted, longitudinal story across three
-            meetings so you can inspect claims, changes, and citations.
-          </p>
-        </div>
-        <div>
-          <strong>Live Recall ingestion</strong>
-          <p>
-            New Meeting captures transcript evidence, then OpenAI extracts
-            structured claims with exact passage citations.
-          </p>
-        </div>
-      </section>
-
-      <section className="stats-grid">
-        {Object.entries(stats).map(([label, value]) => (
-          <div className="stat" key={label}>
-            <strong>{value}</strong>
-            <span>{label.replace(/([A-Z])/g, " $1")}</span>
-          </div>
-        ))}
-      </section>
-
-      <section className="section-block">
-        <div className="section-heading">
-          <div>
-            <h2>Current decision snapshot</h2>
-            <p>
-              The present state, with every statement traceable to a
-              conversation.
+      <div className="grid grid-cols-1 gap-4 min-[901px]:grid-cols-2">
+        <section
+          className="overflow-hidden rounded-lg border border-border bg-card"
+          aria-labelledby="current-heading"
+        >
+          <div className="border-b border-border px-5 py-[18px]">
+            <h2 id="current-heading" className="text-[15px] font-semibold">
+              Current state
+            </h2>
+            <p className="mt-1 text-[11px] leading-[1.45] text-muted-foreground">
+              The latest active knowledge extracted from your meetings.
             </p>
           </div>
-        </div>
-        <div className="decision-grid">
-          <article className="decision-card">
-            <span className="kind">Decision &amp; requirement</span>
-            {featured?.claims
-              .filter((claim) => claim.state === "active")
-              .slice(0, 2)
-              .map((claim) => (
-                <p key={claim.id}>{claim.text}</p>
-              ))}
-          </article>
-          <article className="decision-card">
-            <span className="kind">Commitments &amp; owners</span>
-            {ownership?.claims.map((claim) => (
-              <p key={claim.id}>{claim.text}</p>
-            ))}
-          </article>
-          <article className="decision-card">
-            <span className="kind">Risks &amp; open questions</span>
-            {risks?.claims
-              .filter((claim) => claim.state === "active")
-              .map((claim) => (
-                <p key={claim.id}>{claim.text}</p>
-              ))}
-          </article>
-        </div>
-      </section>
-
-      <section className="ask-card">
-        <div className="card-heading">
-          <div>
-            <h2>Ask across meetings</h2>
-            <p>Search entities and claims with linked transcript evidence.</p>
-          </div>
-        </div>
-        <QueryBox />
-      </section>
-
-      <section className="section-block">
-        <div className="section-heading">
-          <div>
-            <h2>What changed</h2>
-            <p>Follow the target date, assumptions, and evidence over time.</p>
-          </div>
-          <Link href="/entities">
-            Browse decision memory <ArrowIcon />
-          </Link>
-        </div>
-        {featured && (
-          <div className="feature-card">
-            <div className="feature-summary">
-              <span className="kind">Featured {featured.kind}</span>
-              <h3>{featured.name}</h3>
-              <p>{featured.description}</p>
-              <Link href={`/entities/${featured.slug}`}>
-                Open entity history <ArrowIcon />
-              </Link>
-            </div>
-            <div className="claim-stack">
-              {featured.claims.slice(0, 3).map((claim) => (
-                <div className="claim-preview" key={claim.id}>
-                  <div>
-                    <StatusPill state={claim.state} />
-                    <time>{formatDate(claim.recordedAt)}</time>
+          <div className="divide-y divide-border">
+            {currentClaims.length > 0 ? (
+              currentClaims.map(({ claim, entity }) => (
+                <Link
+                  href={`/entities/${entity.slug}`}
+                  key={claim.id}
+                  className="block px-5 py-[15px] hover:bg-zinc-50"
+                >
+                  <div className="flex items-center justify-between gap-3 text-[10px] text-muted-foreground">
+                    <span className="inline-flex min-h-[21px] items-center rounded-full border border-border bg-muted px-[7px] text-[9px] font-semibold tracking-[0.06em] text-zinc-600 uppercase">
+                      {entity.kind}
+                    </span>
+                    <span>{entity.name}</span>
                   </div>
-                  <p>{claim.text}</p>
-                  <small>
-                    {claim.evidence.length} cited passage
-                    {claim.evidence.length === 1 ? "" : "s"}
-                  </small>
-                </div>
-              ))}
-            </div>
+                  <p className="mt-2.5 leading-6 text-zinc-700">{claim.text}</p>
+                </Link>
+              ))
+            ) : (
+              <p className="px-5 py-6 text-xs leading-6 text-muted-foreground">
+                Active decisions will appear after a meeting is processed.
+              </p>
+            )}
           </div>
-        )}
-      </section>
+        </section>
 
-      <section className="section-block split-section">
-        <div>
-          <p className="section-label">Recently updated</p>
-          <h2>Decision memory</h2>
-          <div className="entity-list">
-            {entities.map((entity) => (
-              <Link href={`/entities/${entity.slug}`} key={entity.id}>
-                <span className="entity-glyph">{entity.name.charAt(0)}</span>
+        <section
+          className="overflow-hidden rounded-lg border border-border bg-card"
+          aria-labelledby="changes-heading"
+        >
+          <div className="border-b border-border px-5 py-[18px]">
+            <h2 id="changes-heading" className="text-[15px] font-semibold">
+              Recent changes
+            </h2>
+            <p className="mt-1 text-[11px] leading-[1.45] text-muted-foreground">
+              Knowledge that was replaced, disputed, or resolved.
+            </p>
+          </div>
+          <div className="divide-y divide-border">
+            {recentChanges.length > 0 ? (
+              recentChanges.map(({ claim, entity }) => (
+                <Link
+                  href={`/entities/${entity.slug}`}
+                  key={claim.id}
+                  className="block px-5 py-[15px] hover:bg-zinc-50"
+                >
+                  <div className="flex items-center justify-between gap-3 text-[10px] text-muted-foreground">
+                    <StatusPill state={claim.state} />
+                    <LocalDateTime value={claim.recordedAt} />
+                  </div>
+                  <p className="mt-2.5 leading-6 text-zinc-700">{claim.text}</p>
+                  <small className="mt-1.5 block text-[10px] text-muted-foreground">
+                    {entity.name}
+                  </small>
+                </Link>
+              ))
+            ) : (
+              <p className="px-5 py-6 text-xs leading-6 text-muted-foreground">
+                Changes will appear when meeting evidence updates existing
+                knowledge.
+              </p>
+            )}
+          </div>
+        </section>
+      </div>
+
+      <section
+        className="mt-4 overflow-hidden rounded-lg border border-border bg-card"
+        aria-labelledby="recent-meetings-heading"
+      >
+        <div className="border-b border-border px-5 py-[18px]">
+          <h2
+            id="recent-meetings-heading"
+            className="text-[15px] font-semibold"
+          >
+            Recent meetings
+          </h2>
+          <p className="mt-1 text-[11px] leading-[1.45] text-muted-foreground">
+            The latest source conversations added to Decision Trail.
+          </p>
+        </div>
+        <div className="divide-y divide-border">
+          {meetings.length > 0 ? (
+            meetings.slice(0, 5).map((meeting) => (
+              <Link
+                href={`/meetings/${meeting.id}`}
+                key={meeting.id}
+                className="grid min-h-[62px] grid-cols-[1fr_auto] items-center gap-4 px-5 py-3 hover:bg-zinc-50 sm:grid-cols-[150px_1fr_auto]"
+              >
+                <span className="col-span-2 text-[10px] text-muted-foreground sm:col-span-1">
+                  <LocalDateTime value={meeting.startedAt} />
+                </span>
                 <span>
-                  <b>{entity.name}</b>
-                  <small>
-                    {entity.kind} · {entity.activeClaimCount} active claims
+                  <strong className="block text-xs font-[550]">
+                    {meeting.title}
+                  </strong>
+                  <small className="mt-[3px] block text-[10px] text-muted-foreground">
+                    {meeting.participants.join(" · ")}
                   </small>
                 </span>
-                <ArrowIcon />
+                <small className="text-[10px] text-muted-foreground">
+                  {meeting.utteranceCount} passages
+                </small>
               </Link>
-            ))}
-          </div>
-        </div>
-        <div>
-          <p className="section-label">Source trail</p>
-          <h2>Recent meetings</h2>
-          <div className="meeting-list">
-            {meetings.map((meeting) => (
-              <Link href={`/meetings/${meeting.id}`} key={meeting.id}>
-                <time>{formatDate(meeting.startedAt)}</time>
-                <b>{meeting.title}</b>
-                <small>{meeting.participants.join(" · ")}</small>
-              </Link>
-            ))}
-          </div>
+            ))
+          ) : (
+            <p className="px-5 py-6 text-xs leading-6 text-muted-foreground">
+              Your processed meetings will appear here.
+            </p>
+          )}
         </div>
       </section>
     </div>

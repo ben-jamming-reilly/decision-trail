@@ -19,6 +19,7 @@ export class RecallClient {
   }
 
   async getCompletedTranscript(args: {
+    trailId: string;
     transcriptId: string;
     recordingId?: string;
     botId?: string;
@@ -35,12 +36,11 @@ export class RecallClient {
     const utterances = normalizeTranscript(segments);
     const startedAt = inferStartedAt(segments) ?? new Date().toISOString();
     return {
+      trailId: args.trailId,
       recallTranscriptId: args.transcriptId,
       recallRecordingId: args.recordingId,
       recallBotId: args.botId,
-      title:
-        args.title ??
-        `Recall meeting · ${new Date(startedAt).toLocaleDateString("en-US", { dateStyle: "medium", timeZone: "UTC" })}`,
+      title: args.title ?? "Recall meeting",
       startedAt,
       utterances,
     };
@@ -51,6 +51,7 @@ export class RecallClient {
     title: string;
     joinAt: string;
     captureId: string;
+    trailId: string;
   }) {
     return this.request<{ id: string }>("/api/v1/bot/", {
       method: "POST",
@@ -60,20 +61,12 @@ export class RecallClient {
         bot_name: "Decision Trail",
         join_at: args.joinAt,
         metadata: {
+          trailId: args.trailId,
+          meetingId: args.captureId,
           recall_knowledge_capture_id: args.captureId,
           recall_knowledge_title: args.title,
         },
-        recording_config: {
-          transcript: {
-            provider: {
-              recallai_streaming: {
-                mode: "prioritize_accuracy",
-                language_code: "auto",
-              },
-            },
-            diarization: { use_separate_streams_when_available: true },
-          },
-        },
+        recording_config: { video_mixed_mp4: {}, participant_events: {} },
         chat: {
           on_bot_join: {
             send_to: "everyone",
@@ -88,6 +81,36 @@ export class RecallClient {
 
   async getBot(botId: string) {
     return this.request<RecallBot>(`/api/v1/bot/${encodeURIComponent(botId)}/`);
+  }
+
+  async createAsyncTranscript(recordingId: string, keyTerms: string[]) {
+    return this.request<{ id: string }>(
+      `/api/v1/recording/${encodeURIComponent(recordingId)}/create_transcript/`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          provider: {
+            recallai_async: {
+              language_code: "auto",
+              ...(keyTerms.length ? { key_terms: keyTerms.slice(0, 100) } : {}),
+            },
+          },
+          diarization: { use_separate_streams_when_available: true },
+        }),
+      },
+    );
+  }
+
+  async getFreshVideoUrl(botId: string) {
+    const bot = await this.getBot(botId);
+    const video = bot.recordings
+      ?.flatMap((recording) => recording.media_shortcuts?.video_mixed ?? [])
+      .find(
+        (artifact) =>
+          artifact.status?.code === "done" && artifact.data?.download_url,
+      );
+    return video?.data?.download_url ?? null;
   }
 
   private async request<T>(path: string, init: RequestInit = {}): Promise<T> {
@@ -127,9 +150,14 @@ export function normalizeTranscript(segments: RecallTranscriptSegment[]) {
     .map((segment) => {
       const first = segment.words[0];
       const last = segment.words[segment.words.length - 1];
+      const participant = segment.participant;
+      const speaker = segment.speaker ?? participant?.name ?? "Unknown speaker";
       return {
-        speaker:
-          segment.speaker ?? segment.participant?.name ?? "Unknown speaker",
+        speaker,
+        speakerIdentity: participantIdentity(participant, speaker),
+        ...(participant?.email
+          ? { speakerEmail: participant.email.toLowerCase() }
+          : {}),
         startSeconds: wordTime(first, "start"),
         endSeconds: wordTime(last, "end"),
         text: segment.words
@@ -139,6 +167,20 @@ export function normalizeTranscript(segments: RecallTranscriptSegment[]) {
       };
     })
     .filter((segment) => segment.text.length > 0);
+}
+
+function participantIdentity(
+  participant: RecallTranscriptSegment["participant"],
+  speaker: string,
+) {
+  const email = participant?.email?.trim().toLowerCase();
+  if (email) return `email:${email}`;
+  const zoomId =
+    participant?.extra_data?.zoom?.conf_user_id ??
+    participant?.extra_data?.zoom?.user_conf_id;
+  if (zoomId) return `zoom:${zoomId}`;
+  const normalizedName = speaker.trim().toLowerCase().replace(/\s+/g, " ");
+  return `${participant?.platform ?? "display-name"}:${normalizedName}`;
 }
 
 function wordTime(

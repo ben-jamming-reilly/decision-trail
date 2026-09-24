@@ -1,4 +1,4 @@
-export type ClaimState = "active" | "superseded" | "disputed";
+export type ClaimState = "active" | "superseded" | "disputed" | "resolved";
 
 export interface Evidence {
   id: string;
@@ -40,6 +40,8 @@ export interface Entity extends EntitySummary {
 export interface Utterance {
   id: string;
   speaker: string;
+  speakerIdentity?: string;
+  speakerEmail?: string;
   startSeconds: number;
   endSeconds: number;
   text: string;
@@ -47,11 +49,13 @@ export interface Utterance {
 
 export interface MeetingSummary {
   id: string;
+  trailId: string;
   title: string;
   startedAt: string;
   participants: string[];
   source: "recall";
   recallBotId?: string;
+  recallRecordingId?: string;
   utteranceCount: number;
 }
 
@@ -70,4 +74,10 @@ export interface QueryResult {
   entity: EntitySummary;
   claim: Claim;
   score: number;
+}
+
+export interface MeetingChange {
+  entity: EntitySummary;
+  claim: Claim;
+  previousClaim?: Claim;
 }

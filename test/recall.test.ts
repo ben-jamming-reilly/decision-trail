@@ -61,11 +61,32 @@ describe("Recall transcript normalization", () => {
     ).toEqual([
       {
         speaker: "Maya",
+        speakerIdentity: "display-name:maya",
         startSeconds: 3.2,
         endSeconds: 4.7,
         text: "Hello team.",
       },
     ]);
+  });
+
+  it("uses durable participant identifiers before display names", () => {
+    const [email, zoom] = normalizeTranscript([
+      {
+        participant: { name: "Sarah", email: "SARAH@example.com" },
+        words: [{ text: "One", start_time: 0, end_time: 1 }],
+      },
+      {
+        participant: {
+          name: "Sarah C.",
+          platform: "zoom",
+          extra_data: { zoom: { conf_user_id: "zoom-user-42" } },
+        },
+        words: [{ text: "Two", start_time: 1, end_time: 2 }],
+      },
+    ]);
+    expect(email.speakerIdentity).toBe("email:sarah@example.com");
+    expect(email.speakerEmail).toBe("sarah@example.com");
+    expect(zoom.speakerIdentity).toBe("zoom:zoom-user-42");
   });
 });
 
@@ -88,6 +109,7 @@ describe("Recall bot creation", () => {
         meetingUrl: "https://meet.google.com/abc-defg-hij",
         title: "Product sync",
         captureId: "capture_test",
+        trailId: "product-decisions",
         joinAt: "2026-09-24T18:00:00.000Z",
       }),
     ).resolves.toEqual({ id: "bot_test" });
@@ -100,10 +122,46 @@ describe("Recall bot creation", () => {
       join_at: "2026-09-24T18:00:00.000Z",
       bot_name: "Decision Trail",
       metadata: {
+        trailId: "product-decisions",
+        meetingId: "capture_test",
         recall_knowledge_capture_id: "capture_test",
         recall_knowledge_title: "Product sync",
       },
       chat: { on_bot_join: { send_to: "everyone", pin: true } },
+      recording_config: { video_mixed_mp4: {}, participant_events: {} },
+    });
+    expect(JSON.stringify(JSON.parse(String(requestInit?.body)))).not.toContain(
+      "recallai_streaming",
+    );
+  });
+
+  it("starts post-meeting transcription with trail vocabulary", async () => {
+    let requestUrl = "";
+    let requestBody = "";
+    const fetcher: typeof fetch = async (input, init) => {
+      requestUrl = String(input);
+      requestBody = String(init?.body);
+      return new Response(JSON.stringify({ id: "transcript_test" }), {
+        status: 201,
+        headers: { "content-type": "application/json" },
+      });
+    };
+    const client = new RecallClient("secret-test-key", "us-west-2", fetcher);
+    await client.createAsyncTranscript("recording_test", [
+      "Acme Cloud",
+      "Sam Rao",
+    ]);
+    expect(requestUrl).toContain(
+      "/recording/recording_test/create_transcript/",
+    );
+    expect(JSON.parse(requestBody)).toMatchObject({
+      provider: {
+        recallai_async: {
+          language_code: "auto",
+          key_terms: ["Acme Cloud", "Sam Rao"],
+        },
+      },
+      diarization: { use_separate_streams_when_available: true },
     });
   });
 });

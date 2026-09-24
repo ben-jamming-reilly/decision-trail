@@ -3,6 +3,7 @@ import type { Entity, Meeting } from "@/lib/domain";
 export const demoMeetings: Meeting[] = [
   {
     id: "11111111-1111-4111-8111-111111111111",
+    trailId: "enterprise-bulk-export",
     title: "Enterprise customer discovery",
     startedAt: "2026-01-12T17:00:00.000Z",
     participants: ["Elena Park", "Maya Chen", "Priya Rao"],
@@ -35,6 +36,7 @@ export const demoMeetings: Meeting[] = [
   },
   {
     id: "22222222-2222-4222-8222-222222222222",
+    trailId: "enterprise-bulk-export",
     title: "Bulk export product planning",
     startedAt: "2026-02-03T18:30:00.000Z",
     participants: ["Maya Chen", "Jon Bell", "Priya Rao"],
@@ -67,6 +69,7 @@ export const demoMeetings: Meeting[] = [
   },
   {
     id: "33333333-3333-4333-8333-333333333333",
+    trailId: "enterprise-bulk-export",
     title: "Bulk export engineering review",
     startedAt: "2026-02-18T16:00:00.000Z",
     participants: ["Jon Bell", "Maya Chen", "Sam Ortiz"],

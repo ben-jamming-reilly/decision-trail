@@ -5,10 +5,12 @@ const mocks = vi.hoisted(() => ({
     getCapture: vi.fn(),
     getCaptureByBotId: vi.fn(),
     updateCapture: vi.fn(),
+    getTrailVocabulary: vi.fn(),
     saveTranscript: vi.fn(),
   },
   recall: {
     getCompletedTranscript: vi.fn(),
+    createAsyncTranscript: vi.fn(),
   },
 }));
 
@@ -24,6 +26,7 @@ import { processRecallWebhook } from "@/lib/recall/webhooks";
 
 const capture = {
   id: "11111111-1111-4111-8111-111111111111",
+  trailId: "product-decisions",
   title: "Product sync",
   meetingUrl: "https://meet.google.com/abc-defg-hij",
   joinAt: "2026-09-24T18:00:00.000Z",
@@ -37,6 +40,10 @@ describe("Recall lifecycle processing", () => {
     mocks.repository.getCapture.mockResolvedValue(capture);
     mocks.repository.getCaptureByBotId.mockResolvedValue(capture);
     mocks.repository.updateCapture.mockResolvedValue(capture);
+    mocks.repository.getTrailVocabulary.mockResolvedValue([]);
+    mocks.recall.createAsyncTranscript.mockResolvedValue({
+      id: "transcript_test",
+    });
   });
 
   it("persists bot status changes using capture metadata", async () => {
@@ -81,8 +88,38 @@ describe("Recall lifecycle processing", () => {
     expect(mocks.repository.updateCapture).not.toHaveBeenCalled();
   });
 
+  it("starts async transcription after recording completion", async () => {
+    mocks.repository.getTrailVocabulary.mockResolvedValue([
+      "Decision Trail",
+      "Acme Cloud",
+    ]);
+
+    await processRecallWebhook({
+      event: "recording.done",
+      data: {
+        bot: {
+          id: "bot_test",
+          metadata: { recall_knowledge_capture_id: capture.id },
+        },
+        recording: { id: "recording_test" },
+      },
+    });
+
+    expect(mocks.recall.createAsyncTranscript).toHaveBeenCalledWith(
+      "recording_test",
+      ["Decision Trail", "Acme Cloud"],
+    );
+    expect(mocks.repository.updateCapture).toHaveBeenCalledWith(capture.id, {
+      status: "processing",
+      statusDetail: "Transcribing with 2 trail key terms",
+      recordingId: "recording_test",
+      transcriptId: "transcript_test",
+    });
+  });
+
   it("imports a completed transcript with the original meeting title", async () => {
     const transcript = {
+      trailId: capture.trailId,
       recallTranscriptId: "transcript_test",
       recallRecordingId: "recording_test",
       recallBotId: "bot_test",
@@ -106,6 +143,7 @@ describe("Recall lifecycle processing", () => {
     });
 
     expect(mocks.recall.getCompletedTranscript).toHaveBeenCalledWith({
+      trailId: capture.trailId,
       transcriptId: "transcript_test",
       recordingId: "recording_test",
       botId: "bot_test",

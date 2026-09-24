@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getRepository } from "@/data";
 import { getRecallClient } from "@/lib/recall";
+import { normalizeTrailId } from "@/lib/trail";
 
 export const runtime = "nodejs";
 
@@ -9,16 +10,24 @@ export async function POST(request: Request) {
   try {
     const body = (await request.json()) as {
       title?: unknown;
+      trailId?: unknown;
       meetingUrl?: unknown;
       joinAt?: unknown;
     };
     const title = typeof body.title === "string" ? body.title.trim() : "";
+    const trailId = normalizeTrailId(body.trailId);
     const meetingUrl =
       typeof body.meetingUrl === "string" ? body.meetingUrl.trim() : "";
     const joinAt = typeof body.joinAt === "string" ? body.joinAt.trim() : "";
     if (!title || title.length > 120) {
       return NextResponse.json(
         { error: "Meeting title is required and must be under 120 characters" },
+        { status: 400 },
+      );
+    }
+    if (!trailId) {
+      return NextResponse.json(
+        { error: "Trail ID must be a lowercase slug under 80 characters" },
         { status: 400 },
       );
     }
@@ -46,6 +55,7 @@ export async function POST(request: Request) {
       : new Date().toISOString();
     const repository = getRepository();
     const capture = await repository.createCapture({
+      trailId,
       title,
       meetingUrl,
       joinAt: scheduledJoinAt,
@@ -55,6 +65,7 @@ export async function POST(request: Request) {
       meetingUrl,
       title,
       captureId: capture.id,
+      trailId,
       joinAt: scheduledJoinAt,
     });
     await repository.updateCapture(capture.id, {

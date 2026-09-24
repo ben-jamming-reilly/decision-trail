@@ -26,6 +26,7 @@ const BOT_STATUS: Record<string, CaptureStatus> = {
   "bot.joining_call": "joining",
   "bot.in_waiting_room": "waiting_room",
   "bot.in_call_not_recording": "in_call",
+  "bot.recording_permission_allowed": "in_call",
   "bot.in_call_recording": "recording",
   "bot.call_ended": "processing",
   "bot.done": "processing",
@@ -65,9 +66,18 @@ export async function processRecallWebhook(event: RecallWebhookEvent) {
   if (event.event === "recording.done") {
     const recordingId = event.data?.recording?.id;
     if (!recordingId) throw new Error("recording.done had no recording id");
+    const keyTerms = await repository.getTrailVocabulary(capture.trailId);
+    const transcript = await getRecallClient().createAsyncTranscript(
+      recordingId,
+      keyTerms,
+    );
     await repository.updateCapture(capture.id, {
       status: "processing",
+      statusDetail: keyTerms.length
+        ? `Transcribing with ${keyTerms.length} trail key terms`
+        : "Transcribing recording",
       recordingId,
+      transcriptId: transcript.id,
     });
     return;
   }
@@ -77,6 +87,7 @@ export async function processRecallWebhook(event: RecallWebhookEvent) {
     const transcriptId = event.data?.transcript?.id;
     if (!transcriptId) throw new Error("transcript.done had no transcript id");
     const transcript = await getRecallClient().getCompletedTranscript({
+      trailId: capture.trailId,
       transcriptId,
       recordingId: event.data?.recording?.id ?? capture.recordingId,
       botId: event.data?.bot?.id ?? capture.botId,
@@ -112,7 +123,18 @@ async function processBotEvent(
   event: RecallWebhookEvent,
 ) {
   const status = BOT_STATUS[event.event];
-  if (!status) return;
+  if (!status) {
+    await getRepository().updateCapture(capture.id, {
+      statusDetail:
+        [event.data?.data?.code, event.data?.data?.sub_code]
+          .filter(Boolean)
+          .join(": ") || event.event,
+      ...(event.data?.data?.updated_at
+        ? { lastBotEventAt: event.data.data.updated_at }
+        : {}),
+    });
+    return;
+  }
   if (capture.status === "ready" || capture.status === "failed") return;
   if (capture.status === "processing" && status !== "processing") return;
   const eventAt = event.data?.data?.updated_at;

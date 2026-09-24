@@ -18,6 +18,7 @@ export const claimState = pgEnum("claim_state", [
   "active",
   "superseded",
   "disputed",
+  "resolved",
 ]);
 
 export const captureStatus = pgEnum("capture_status", [
@@ -35,6 +36,7 @@ export const meeting = pgTable(
   "meeting",
   {
     id: uuid("id").defaultRandom().primaryKey(),
+    trailId: text("trail_id").default("decision-trail").notNull(),
     title: text("title").notNull(),
     startedAt: timestamp("started_at", { withTimezone: true }).notNull(),
     source: text("source").default("recall").notNull(),
@@ -51,6 +53,7 @@ export const meeting = pgTable(
       table.recallTranscriptId,
     ),
     index("meeting_started_at_idx").on(table.startedAt),
+    index("meeting_trail_id_idx").on(table.trailId),
   ],
 );
 
@@ -58,6 +61,7 @@ export const meetingCapture = pgTable(
   "meeting_capture",
   {
     id: uuid("id").defaultRandom().primaryKey(),
+    trailId: text("trail_id").default("decision-trail").notNull(),
     title: text("title").notNull(),
     meetingUrl: text("meeting_url").notNull(),
     joinAt: timestamp("join_at", { withTimezone: true }).notNull(),
@@ -82,6 +86,7 @@ export const meetingCapture = pgTable(
     uniqueIndex("meeting_capture_bot_id_uidx").on(table.botId),
     index("meeting_capture_status_idx").on(table.status),
     index("meeting_capture_join_at_idx").on(table.joinAt),
+    index("meeting_capture_trail_id_idx").on(table.trailId),
   ],
 );
 
@@ -93,6 +98,8 @@ export const utterance = pgTable(
       .notNull()
       .references(() => meeting.id, { onDelete: "cascade" }),
     speaker: text("speaker").notNull(),
+    speakerIdentity: text("speaker_identity"),
+    speakerEmail: text("speaker_email"),
     startSeconds: real("start_seconds").notNull(),
     endSeconds: real("end_seconds").notNull(),
     text: text("text").notNull(),
@@ -138,6 +145,7 @@ export const claim = pgTable(
   "claim",
   {
     id: uuid("id").defaultRandom().primaryKey(),
+    trailId: text("trail_id").default("decision-trail").notNull(),
     entityId: uuid("entity_id")
       .notNull()
       .references(() => entity.id, { onDelete: "cascade" }),
@@ -157,6 +165,7 @@ export const claim = pgTable(
   (table) => [
     index("claim_entity_id_idx").on(table.entityId),
     index("claim_state_idx").on(table.state),
+    index("claim_trail_id_idx").on(table.trailId),
     check(
       "claim_confidence_range_check",
       sql`${table.confidence} >= 0 and ${table.confidence} <= 1`,

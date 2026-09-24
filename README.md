@@ -33,9 +33,10 @@ Decision Trail deliberately separates two capabilities:
 
 - **Seeded decision intelligence** demonstrates the intended longitudinal
   output: extracted claims, changes, ownership, risks, and linked evidence.
-- **Live Recall + OpenAI ingestion** sends a bot to a meeting, imports the
-  completed transcript, then uses the Vercel AI SDK with OpenAI Structured
-  Outputs to extract claims that cite exact utterance IDs.
+- **Live Recall + OpenAI ingestion** sends a bot to a meeting, starts a
+  post-meeting transcript when the recording is ready, then uses the Vercel AI
+  SDK with a Zod schema and OpenAI Structured Outputs to extract claims that
+  cite exact utterance IDs.
 
 Cross-meeting questions first retrieve deterministic claim matches, then stream
 an AI synthesis grounded only in those claims and their transcript passages.
@@ -78,6 +79,10 @@ Production persistence is PostgreSQL only.
 - Recall.ai bot creation with retry handling for 429, 503, and 507 responses
 - verified raw-body webhook HMAC handling with replay protection
 - post-meeting `transcript.done` retrieval and transcript normalization
+- trail and meeting IDs in bot metadata for webhook correlation
+- trail vocabulary passed to async transcription as `key_terms`
+- cross-meeting participant identity keys, preferring calendar email and Zoom
+  `conf_user_id` over mutable display names
 - immutable meeting/utterance evidence and append-oriented claim history
 - Vercel AI SDK with the dedicated OpenAI provider for grounded answers and
   structured claim extraction
@@ -122,12 +127,21 @@ The typed schema lives in `src/db/schema/knowledge.ts`; generated SQL is under
 Never expose these values in client code or commit `.env*` files.
 
 Choose **New Meeting**, provide a supported HTTPS meeting link, and send the bot
-immediately or schedule it. The server gives the Recall bot an explicit
-recording notice, stores correlation metadata, and enables transcription. Local
-tests can poll and import a completed transcript; deployed environments should
-use the verified webhook as the primary lifecycle path. Once stored, the
-transcript is analyzed into domain-neutral claims. If extraction fails, the
-transcript remains available and the capture reports the analysis error.
+immediately or schedule it. After Recall accepts the bot, the app navigates to
+one durable `/meetings/{captureId}` page; the modal does not need to remain
+open. That same page follows webhook-backed joining, recording, transcription,
+extraction, and failure state, then refreshes in place into the finished
+recording, meeting-specific changes, and timestamped transcript. Give related
+meetings the same trail ID. The server
+puts `trailId` and an application `meetingId` in the bot metadata, gives the bot
+an explicit recording notice, and records video without enabling a real-time
+transcript. On `recording.done`, it starts Recall async transcription and feeds
+the trail's existing project names, product names, aliases, and speakers back as
+`key_terms`. Local tests can poll as a development fallback; deployed
+environments should use verified webhooks as the lifecycle source of truth.
+Once stored, the transcript is analyzed into domain-neutral claims. If
+extraction fails, the transcript remains available and the capture reports the
+analysis error.
 
 For local development, claim a static domain in the ngrok dashboard and save
 its HTTPS origin as `PUBLIC_API_BASE_URL` in `.env.local`. Run the app and point
@@ -158,9 +172,14 @@ endpoint into `RECALL_WEBHOOK_SECRET`, then restart `pnpm dev`. The handler
 verifies Recall's signature against the unmodified request body before it
 records or processes the event.
 
-Subscribe at minimum to `transcript.done`. `transcript.failed`,
-`recording.done`, and bot lifecycle events are also retained in the webhook
-audit table. Recall documents
+Subscribe the endpoint to `recording.done`, `recording.failed`,
+`transcript.done`, `transcript.failed`, and every `bot.*` lifecycle event:
+`joining_call`, `in_waiting_room`, `in_call_not_recording`,
+`recording_permission_allowed`, `recording_permission_denied`,
+`in_call_recording`, `call_ended`, `done`, and `fatal`. Unknown future bot
+events are retained and surfaced as status detail instead of being rejected.
+The Conversations page shows scheduled, active, processing, ready, and failed
+captures, including failure subcodes. Recall documents
 [local webhook development](https://docs.recall.ai/docs/local-webhook-development),
 [webhook verification](https://docs.recall.ai/docs/authenticating-requests-from-recallai)
 and the [post-meeting transcript lifecycle](https://docs.recall.ai/docs/async-transcription).
@@ -190,6 +209,9 @@ Key boundaries:
 
 - `src/lib/recall/` owns Recall transport, webhook processing, and response
   shapes.
+- `src/lib/trail.ts` owns the meeting-series identifier contract; trail-scoped
+  repository queries keep extraction memory and transcription vocabulary from
+  leaking across series.
 - `src/data/` implements the repository contract; pages do not issue SQL.
 - `src/db/schema/` owns durable records and provenance invariants.
 - `src/lib/knowledge-template.ts` owns domain-neutral extraction vocabulary.
@@ -204,11 +226,15 @@ without copying their broader service stacks.
 
 ## Claim model and query behavior
 
-Claim state is explicit:
+Every extraction compares the new transcript with the trail's existing open
+claims. Its structured relationship is one of `new`, `reaffirms`,
+`supersedes`, `disputes`, or `resolves`; the repository applies that change and
+keeps the cited old and new meeting evidence. Claim state is explicit:
 
 - `active`: the best currently supported statement
 - `superseded`: retained history replaced by a newer claim
 - `disputed`: something said but later contradicted or contested
+- `resolved`: a previously open risk or question that later evidence closed
 
 `claim_evidence` connects every published claim to stored utterances with the
 meeting, speaker, relative start/end time, and quotation.
@@ -231,6 +257,42 @@ pnpm build       # Next.js production build
 pnpm build:cf    # OpenNext Cloudflare build
 ```
 
+## Speaker identity across meetings
+
+Display names are presentation, not identity. Transcript normalization stores a
+separate participant identity key with this precedence:
+
+1. Calendar-matched participant email (normalized to lowercase).
+2. Zoom `conf_user_id`, which is stable across meetings.
+3. Platform plus normalized display name as an explicitly weak fallback.
+
+Recall participant emails require a Calendar-created bot and may be null when
+fuzzy matching is ambiguous. A production UI should let a user correct or merge
+the fallback identity and preserve that merge history. This matters more here
+than in a single-meeting notes app because attribution such as “Sarah reversed
+Tuesday's decision” is only valid if both Sarah references resolve to the same
+person. See Recall's guides to
+[participant emails](https://docs.recall.ai/docs/meeting-participant-emails)
+and [unique participant identification](https://docs.recall.ai/v1.10/docs/identify-meeting-participants-uniquely).
+
+## Playback and expiring media
+
+Transcript timestamps are controls: clicking one seeks the Recall recording to
+that moment. Evidence links deep-link to the same timestamp. The application
+stores recording and transcript artifact IDs, never their signed download
+URLs. It retrieves a fresh video URL from Recall whenever the meeting player is
+opened and a fresh transcript URL when `transcript.done` is processed.
+
+## Scheduling and Calendar V2
+
+This sample intentionally uses `join_at` to keep setup small and inspectable.
+Production should use Recall Calendar V2 so recurring events create bots
+reliably, calendar attendee emails can strengthen participant identity, and the
+calendar's recurring-event data can choose the trail ID. The integration point
+is capture creation: replace the dialog's ad-hoc/scheduled bot call with a
+Calendar V2 event handler while keeping the same `trailId`/`meetingId` metadata
+and downstream recording webhook flow.
+
 ## Current limitations
 
 - High-volume webhook processing should move from post-response work to a
@@ -240,8 +302,9 @@ pnpm build:cf    # OpenNext Cloudflare build
 - Authentication, workspace isolation, consent/retention controls, and PII
   redaction are required before handling real customer meetings.
 - Webhook audit payloads need an explicit production retention policy.
-- Scheduled/in-progress capture state is durable but not yet listed on the
-  overview before a transcript is ready.
+- Participant email matching depends on Calendar integration enablement; name
+  fallback still needs a manual correction/merge UI.
+- The demo uses `join_at`; Calendar V2 is the production scheduling path.
 
 ## Safe extension points
 
@@ -253,6 +316,8 @@ pnpm build:cf    # OpenNext Cloudflare build
 - Add a PostgreSQL jobs table with `FOR UPDATE SKIP LOCKED` before introducing
   more infrastructure.
 - Add `pgvector` only if lexical retrieval proves insufficient.
+- Add real-time transcription only for a genuinely in-meeting workflow; the
+  decision trail intentionally uses the higher-quality post-meeting path.
 
 ## Deployment with OpenNext
 

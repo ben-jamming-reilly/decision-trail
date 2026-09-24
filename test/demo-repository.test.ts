@@ -29,4 +29,21 @@ describe("demo knowledge repository", () => {
       new Set(["active", "disputed", "superseded"]),
     );
   });
+
+  it("lists only changes supported by a specific meeting", async () => {
+    const meetingId = "33333333-3333-4333-8333-333333333333";
+    const changes = await new DemoKnowledgeRepository().listMeetingChanges(
+      meetingId,
+    );
+    expect(changes.length).toBeGreaterThan(0);
+    expect(
+      changes.every((change) =>
+        change.claim.evidence.some(
+          (evidence) => evidence.meetingId === meetingId,
+        ),
+      ),
+    ).toBe(true);
+    expect(changes.some((change) => change.claim.supersedesClaimId)).toBe(true);
+    expect(changes.some((change) => change.previousClaim)).toBe(true);
+  });
 });

@@ -22,6 +22,20 @@
       "when": 1790224176213,
       "tag": "0002_rich_blue_marvel",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1790233842117,
+      "tag": "0003_opposite_junta",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1790233898863,
+      "tag": "0004_dizzy_skrulls",
+      "breakpoints": true
     }
   ]
 }

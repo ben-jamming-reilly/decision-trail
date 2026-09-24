@@ -1,8 +1,8 @@
 import { notFound } from "next/navigation";
 import { EvidenceCard } from "@/components/evidence-card";
+import { LocalDateTime } from "@/components/local-date-time";
 import { StatusPill } from "@/components/status-pill";
 import { getRepository } from "@/data";
-import { formatDate } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
@@ -16,57 +16,82 @@ export default async function EntityPage({
   if (!entity) notFound();
 
   return (
-    <div className="page-wrap inner-page entity-page">
-      <header className="entity-header">
-        <span className="kind">{entity.kind}</span>
-        <h1>{entity.name}</h1>
-        <p>{entity.description}</p>
-        <div className="alias-row">
+    <div className="mx-auto w-[calc(100%-28px)] max-w-[1180px] pt-6 pb-16 sm:w-[calc(100%-56px)] sm:pt-9">
+      <header className="max-w-[800px] pt-1 pb-[30px]">
+        <span className="inline-flex min-h-[21px] items-center rounded-full border border-border bg-muted px-[7px] text-[9px] font-semibold tracking-[0.06em] text-zinc-600 uppercase">
+          {entity.kind}
+        </span>
+        <h1 className="mt-3 text-[26px] leading-tight font-[650] tracking-[-0.025em]">
+          {entity.name}
+        </h1>
+        <p className="mt-1.5 leading-6 text-muted-foreground">
+          {entity.description}
+        </p>
+        <div className="mt-[9px] text-[11px] text-muted-foreground">
           Also known as {entity.aliases.join(", ")} · Updated{" "}
-          {formatDate(entity.updatedAt)}
+          <LocalDateTime value={entity.updatedAt} />
         </div>
       </header>
-      <div className="entity-layout">
-        <aside>
-          <p className="eyebrow">At a glance</p>
-          <div>
-            <strong>{entity.activeClaimCount}</strong>
-            <span>active claims</span>
-          </div>
-          <div>
-            <strong>
-              {entity.claims.filter((c) => c.state === "superseded").length}
-            </strong>
-            <span>superseded</span>
-          </div>
-          <div>
-            <strong>
-              {entity.claims.filter((c) => c.state === "disputed").length}
-            </strong>
-            <span>disputed</span>
-          </div>
+      <div className="grid grid-cols-1 items-start gap-[22px] min-[901px]:grid-cols-[180px_1fr]">
+        <aside className="rounded-lg border border-border bg-card p-4 shadow-[0_1px_2px_rgba(0,0,0,0.025)] min-[901px]:sticky min-[901px]:top-[78px]">
+          <p className="mb-2 text-[11px] font-medium tracking-[0.08em] text-muted-foreground uppercase">
+            At a glance
+          </p>
+          {[
+            [entity.activeClaimCount, "active claims"],
+            [
+              entity.claims.filter((c) => c.state === "superseded").length,
+              "superseded",
+            ],
+            [
+              entity.claims.filter((c) => c.state === "disputed").length,
+              "disputed",
+            ],
+            [
+              entity.claims.filter((c) => c.state === "resolved").length,
+              "resolved",
+            ],
+          ].map(([value, label]) => (
+            <div className="border-t border-border py-3" key={label}>
+              <strong className="block text-xl font-[650]">{value}</strong>
+              <span className="mt-0.5 block text-[10px] text-muted-foreground">
+                {label}
+              </span>
+            </div>
+          ))}
         </aside>
-        <section className="timeline">
-          <div className="section-heading">
+        <section>
+          <div className="mb-3.5 flex items-end justify-between">
             <div>
-              <p className="eyebrow">Claim history</p>
-              <h2>What we heard, over time</h2>
+              <p className="mb-2 text-[11px] font-medium tracking-[0.08em] text-muted-foreground uppercase">
+                Claim history
+              </p>
+              <h2 className="text-base font-semibold tracking-[-0.01em]">
+                What we heard, over time
+              </h2>
             </div>
           </div>
           {entity.claims.map((claim) => (
-            <article className="claim-card" key={claim.id}>
-              <div className="claim-card-head">
+            <article
+              className="mb-3 rounded-lg border border-border bg-card p-5 shadow-[0_1px_2px_rgba(0,0,0,0.025)]"
+              key={claim.id}
+            >
+              <div className="flex items-center gap-2.5 text-[10px] text-muted-foreground">
                 <StatusPill state={claim.state} />
-                <time>{formatDate(claim.recordedAt)}</time>
-                <span>
+                <LocalDateTime value={claim.recordedAt} />
+                <span className="ml-auto">
                   {Math.round(claim.confidence * 100)}% extraction confidence
                 </span>
               </div>
-              <h3>{claim.text}</h3>
+              <h3 className="my-[15px] text-base leading-6 font-[550]">
+                {claim.text}
+              </h3>
               {claim.supersedesClaimId && (
-                <p className="supersedes">↳ Supersedes an earlier claim</p>
+                <p className="text-[10px] text-yellow-700">
+                  ↳ Supersedes an earlier claim
+                </p>
               )}
-              <div className="evidence-grid">
+              <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2">
                 {claim.evidence.map((item) => (
                   <EvidenceCard evidence={item} key={item.id} />
                 ))}

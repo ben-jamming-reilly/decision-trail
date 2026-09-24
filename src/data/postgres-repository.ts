@@ -48,7 +48,7 @@ export class PostgresKnowledgeRepository implements KnowledgeRepository {
     };
   }
 
-  async listEntities() {
+  async listEntities(trailId?: string) {
     const rows = await this.db
       .select({
         id: entity.id,
@@ -62,6 +62,7 @@ export class PostgresKnowledgeRepository implements KnowledgeRepository {
       })
       .from(entity)
       .leftJoin(claim, eq(claim.entityId, entity.id))
+      .where(trailId ? eq(claim.trailId, trailId) : undefined)
       .groupBy(entity.id)
       .orderBy(desc(entity.updatedAt));
     return rows.map((row) => ({
@@ -70,13 +71,13 @@ export class PostgresKnowledgeRepository implements KnowledgeRepository {
     }));
   }
 
-  async getEntity(slug: string) {
+  async getEntity(slug: string, trailId?: string) {
     const [subject] = await this.db
       .select()
       .from(entity)
       .where(eq(entity.slug, slug));
     if (!subject) return null;
-    const claims = await this.claimsForEntities([subject.id]);
+    const claims = await this.claimsForEntities([subject.id], trailId);
     const subjectClaims = claims.get(subject.id) ?? [];
     return {
       ...subject,
@@ -92,11 +93,13 @@ export class PostgresKnowledgeRepository implements KnowledgeRepository {
     const rows = await this.db
       .select({
         id: meeting.id,
+        trailId: meeting.trailId,
         title: meeting.title,
         startedAt: meeting.startedAt,
         participants: meeting.participants,
         source: meeting.source,
         recallBotId: meeting.recallBotId,
+        recallRecordingId: meeting.recallRecordingId,
         utteranceCount: count(utterance.id),
       })
       .from(meeting)
@@ -108,7 +111,16 @@ export class PostgresKnowledgeRepository implements KnowledgeRepository {
       source: "recall" as const,
       startedAt: row.startedAt.toISOString(),
       recallBotId: row.recallBotId ?? undefined,
+      recallRecordingId: row.recallRecordingId ?? undefined,
     }));
+  }
+
+  async listCaptures() {
+    const rows = await this.db
+      .select()
+      .from(meetingCapture)
+      .orderBy(desc(meetingCapture.updatedAt));
+    return rows.map(toCapture);
   }
 
   async getMeeting(id: string) {
@@ -124,20 +136,62 @@ export class PostgresKnowledgeRepository implements KnowledgeRepository {
       .orderBy(asc(utterance.ordinal));
     return {
       id: row.id,
+      trailId: row.trailId,
       title: row.title,
       startedAt: row.startedAt.toISOString(),
       participants: row.participants,
       source: "recall" as const,
       recallBotId: row.recallBotId ?? undefined,
+      recallRecordingId: row.recallRecordingId ?? undefined,
       utteranceCount: utterances.length,
       utterances: utterances.map((item) => ({
         id: item.id,
         speaker: item.speaker,
+        speakerIdentity: item.speakerIdentity ?? undefined,
+        speakerEmail: item.speakerEmail ?? undefined,
         startSeconds: item.startSeconds,
         endSeconds: item.endSeconds,
         text: item.text,
       })),
     };
+  }
+
+  async listMeetingChanges(meetingId: string) {
+    const rows = await this.db
+      .selectDistinct({ entity, claim })
+      .from(claim)
+      .innerJoin(entity, eq(entity.id, claim.entityId))
+      .innerJoin(claimEvidence, eq(claimEvidence.claimId, claim.id))
+      .innerJoin(utterance, eq(utterance.id, claimEvidence.utteranceId))
+      .where(eq(utterance.meetingId, meetingId))
+      .orderBy(desc(claim.recordedAt));
+    const hydrated = await this.claimsForEntities([
+      ...new Set(rows.map((row) => row.entity.id)),
+    ]);
+    return rows.flatMap(({ entity: subject, claim: rawClaim }) => {
+      const claims = hydrated.get(subject.id) ?? [];
+      const hydratedClaim = claims.find((item) => item.id === rawClaim.id);
+      if (!hydratedClaim) return [];
+      return [
+        {
+          entity: {
+            id: subject.id,
+            slug: subject.slug,
+            name: subject.name,
+            kind: subject.kind,
+            description: subject.description,
+            claimCount: claims.length,
+            activeClaimCount: claims.filter((item) => item.state === "active")
+              .length,
+            updatedAt: subject.updatedAt.toISOString(),
+          },
+          claim: hydratedClaim,
+          previousClaim: hydratedClaim.supersedesClaimId
+            ? claims.find((item) => item.id === hydratedClaim.supersedesClaimId)
+            : undefined,
+        },
+      ];
+    });
   }
 
   async search(query: string): Promise<QueryResult[]> {
@@ -212,6 +266,7 @@ export class PostgresKnowledgeRepository implements KnowledgeRepository {
   }
 
   async createCapture(input: {
+    trailId: string;
     title: string;
     meetingUrl: string;
     joinAt: string;
@@ -219,12 +274,38 @@ export class PostgresKnowledgeRepository implements KnowledgeRepository {
     const [row] = await this.db
       .insert(meetingCapture)
       .values({
+        trailId: input.trailId,
         title: input.title,
         meetingUrl: input.meetingUrl,
         joinAt: new Date(input.joinAt),
       })
       .returning();
     return toCapture(row);
+  }
+
+  async getTrailVocabulary(trailId: string) {
+    const [subjects, speakers] = await Promise.all([
+      this.db
+        .selectDistinct({ name: entity.name, aliases: entity.aliases })
+        .from(entity)
+        .innerJoin(claim, eq(claim.entityId, entity.id))
+        .where(eq(claim.trailId, trailId)),
+      this.db
+        .select({ speaker: utterance.speaker })
+        .from(utterance)
+        .innerJoin(meeting, eq(meeting.id, utterance.meetingId))
+        .where(eq(meeting.trailId, trailId)),
+    ]);
+    return [
+      ...new Set(
+        [
+          ...subjects.flatMap((item) => [item.name, ...item.aliases]),
+          ...speakers.map((item) => item.speaker),
+        ]
+          .map((item) => item.trim())
+          .filter((item) => item.length >= 2 && item.length <= 100),
+      ),
+    ].slice(0, 100);
   }
 
   async getCapture(id: string) {
@@ -240,6 +321,14 @@ export class PostgresKnowledgeRepository implements KnowledgeRepository {
       .select()
       .from(meetingCapture)
       .where(eq(meetingCapture.botId, botId));
+    return row ? toCapture(row) : null;
+  }
+
+  async getCaptureByMeetingId(meetingId: string) {
+    const [row] = await this.db
+      .select()
+      .from(meetingCapture)
+      .where(eq(meetingCapture.meetingId, meetingId));
     return row ? toCapture(row) : null;
   }
 
@@ -280,6 +369,7 @@ export class PostgresKnowledgeRepository implements KnowledgeRepository {
       const [saved] = await tx
         .insert(meeting)
         .values({
+          trailId: input.trailId,
           title: input.title,
           startedAt: new Date(input.startedAt),
           recallTranscriptId: input.recallTranscriptId,
@@ -289,7 +379,7 @@ export class PostgresKnowledgeRepository implements KnowledgeRepository {
         })
         .onConflictDoUpdate({
           target: meeting.recallTranscriptId,
-          set: { title: input.title, participants },
+          set: { trailId: input.trailId, title: input.title, participants },
         })
         .returning({ id: meeting.id });
       if (input.utterances.length) {
@@ -301,6 +391,8 @@ export class PostgresKnowledgeRepository implements KnowledgeRepository {
               target: [utterance.meetingId, utterance.ordinal],
               set: {
                 speaker: item.speaker,
+                speakerIdentity: item.speakerIdentity,
+                speakerEmail: item.speakerEmail,
                 startSeconds: item.startSeconds,
                 endSeconds: item.endSeconds,
                 text: item.text,
@@ -318,7 +410,7 @@ export class PostgresKnowledgeRepository implements KnowledgeRepository {
   ) {
     return this.db.transaction(async (tx) => {
       const [sourceMeeting] = await tx
-        .select({ startedAt: meeting.startedAt })
+        .select({ startedAt: meeting.startedAt, trailId: meeting.trailId })
         .from(meeting)
         .where(eq(meeting.id, meetingId));
       if (!sourceMeeting) throw new Error(`Meeting ${meetingId} was not found`);
@@ -359,12 +451,65 @@ export class PostgresKnowledgeRepository implements KnowledgeRepository {
           );
           if (!evidenceIds.length) continue;
 
+          const relatedClaimId = extractedClaim.relatedClaimId;
+          const [relatedClaim] = relatedClaimId
+            ? await tx
+                .select({ id: claim.id, state: claim.state })
+                .from(claim)
+                .where(
+                  and(
+                    eq(claim.id, relatedClaimId),
+                    eq(claim.entityId, subject.id),
+                    eq(claim.trailId, sourceMeeting.trailId),
+                  ),
+                )
+            : [];
+          const relationship = relatedClaim
+            ? extractedClaim.relationship
+            : "new";
+
+          if (
+            relatedClaim &&
+            (relationship === "reaffirms" || relationship === "resolves")
+          ) {
+            await tx
+              .insert(claimEvidence)
+              .values(
+                evidenceIds.map((utteranceId) => ({
+                  claimId: relatedClaim.id,
+                  utteranceId,
+                })),
+              )
+              .onConflictDoNothing();
+            const nextState =
+              relationship === "resolves" ? "resolved" : relatedClaim.state;
+            if (relationship === "resolves") {
+              await tx
+                .update(claim)
+                .set({ state: nextState })
+                .where(eq(claim.id, relatedClaim.id));
+            }
+            await tx.insert(claimTransition).values({
+              claimId: relatedClaim.id,
+              fromState: relatedClaim.state,
+              toState: nextState,
+              reason:
+                relationship === "resolves"
+                  ? "Resolved by cited meeting evidence"
+                  : "Reaffirmed by cited meeting evidence",
+              meetingId,
+              changedAt: sourceMeeting.startedAt,
+            });
+            continue;
+          }
+
           const [duplicate] = await tx
             .select({ id: claim.id })
             .from(claim)
             .where(
               and(
                 eq(claim.entityId, subject.id),
+                eq(claim.trailId, sourceMeeting.trailId),
                 eq(claim.text, extractedClaim.text),
               ),
             );
@@ -380,25 +525,10 @@ export class PostgresKnowledgeRepository implements KnowledgeRepository {
               .onConflictDoNothing();
             continue;
           }
-
-          const relatedClaimId = extractedClaim.relatedClaimId;
-          const [relatedClaim] = relatedClaimId
-            ? await tx
-                .select({ id: claim.id, state: claim.state })
-                .from(claim)
-                .where(
-                  and(
-                    eq(claim.id, relatedClaimId),
-                    eq(claim.entityId, subject.id),
-                  ),
-                )
-            : [];
-          const relationship = relatedClaim
-            ? extractedClaim.relationship
-            : "new";
           const [savedClaim] = await tx
             .insert(claim)
             .values({
+              trailId: sourceMeeting.trailId,
               entityId: subject.id,
               text: extractedClaim.text,
               state: relationship === "disputes" ? "disputed" : "active",
@@ -446,7 +576,7 @@ export class PostgresKnowledgeRepository implements KnowledgeRepository {
     });
   }
 
-  private async claimsForEntities(entityIds: string[]) {
+  private async claimsForEntities(entityIds: string[], trailId?: string) {
     const result = new Map<string, Claim[]>();
     if (!entityIds.length) return result;
     const rows = await this.db
@@ -460,7 +590,11 @@ export class PostgresKnowledgeRepository implements KnowledgeRepository {
       .leftJoin(claimEvidence, eq(claimEvidence.claimId, claim.id))
       .leftJoin(utterance, eq(utterance.id, claimEvidence.utteranceId))
       .leftJoin(meeting, eq(meeting.id, utterance.meetingId))
-      .where(inArray(claim.entityId, entityIds))
+      .where(
+        trailId
+          ? and(inArray(claim.entityId, entityIds), eq(claim.trailId, trailId))
+          : inArray(claim.entityId, entityIds),
+      )
       .orderBy(desc(claim.recordedAt));
     for (const row of rows) {
       let item = result
@@ -502,6 +636,7 @@ export class PostgresKnowledgeRepository implements KnowledgeRepository {
 function toCapture(row: typeof meetingCapture.$inferSelect): MeetingCapture {
   return {
     id: row.id,
+    trailId: row.trailId,
     title: row.title,
     meetingUrl: row.meetingUrl,
     joinAt: row.joinAt.toISOString(),

@@ -3,12 +3,14 @@ import type {
   EntitySummary,
   KnowledgeStats,
   Meeting,
+  MeetingChange,
   MeetingSummary,
   QueryResult,
   Utterance,
 } from "@/lib/domain";
 
 export interface TranscriptInput {
+  trailId: string;
   recallTranscriptId: string;
   recallRecordingId?: string;
   recallBotId?: string;
@@ -29,6 +31,7 @@ export type CaptureStatus =
 
 export interface MeetingCapture {
   id: string;
+  trailId: string;
   title: string;
   meetingUrl: string;
   joinAt: string;
@@ -53,7 +56,8 @@ export interface CapturePatch {
   error?: string | null;
 }
 
-export type ExtractedClaimRelationship = "new" | "supersedes" | "disputes";
+export type ExtractedClaimRelationship =
+  "new" | "reaffirms" | "supersedes" | "disputes" | "resolves";
 
 export interface ExtractedEntityInput {
   slug: string;
@@ -72,10 +76,12 @@ export interface ExtractedEntityInput {
 
 export interface KnowledgeRepository {
   getStats(): Promise<KnowledgeStats>;
-  listEntities(): Promise<EntitySummary[]>;
-  getEntity(slug: string): Promise<Entity | null>;
+  listEntities(trailId?: string): Promise<EntitySummary[]>;
+  getEntity(slug: string, trailId?: string): Promise<Entity | null>;
   listMeetings(): Promise<MeetingSummary[]>;
+  listCaptures(): Promise<MeetingCapture[]>;
   getMeeting(id: string): Promise<Meeting | null>;
+  listMeetingChanges(meetingId: string): Promise<MeetingChange[]>;
   search(query: string): Promise<QueryResult[]>;
   recordWebhook(
     eventId: string,
@@ -84,11 +90,14 @@ export interface KnowledgeRepository {
   ): Promise<boolean>;
   completeWebhook(eventId: string, error?: string): Promise<void>;
   createCapture(input: {
+    trailId: string;
     title: string;
     meetingUrl: string;
     joinAt: string;
   }): Promise<MeetingCapture>;
+  getTrailVocabulary(trailId: string): Promise<string[]>;
   getCaptureByBotId(botId: string): Promise<MeetingCapture | null>;
+  getCaptureByMeetingId(meetingId: string): Promise<MeetingCapture | null>;
   getCapture(id: string): Promise<MeetingCapture | null>;
   updateCapture(
     id: string,

@@ -52,18 +52,40 @@ export class DemoKnowledgeRepository implements KnowledgeRepository {
   async listMeetings() {
     return demoMeetings.map((meeting) => ({
       id: meeting.id,
+      trailId: meeting.trailId,
       title: meeting.title,
       startedAt: meeting.startedAt,
       participants: [...meeting.participants],
       source: meeting.source,
       recallBotId: meeting.recallBotId,
+      recallRecordingId: meeting.recallRecordingId,
       utteranceCount: meeting.utteranceCount,
     }));
+  }
+
+  async listCaptures() {
+    return [];
   }
 
   async getMeeting(id: string) {
     return structuredClone(
       demoMeetings.find((meeting) => meeting.id === id) ?? null,
+    );
+  }
+
+  async listMeetingChanges(meetingId: string) {
+    return demoEntities.flatMap((entity) =>
+      entity.claims
+        .filter((claim) =>
+          claim.evidence.some((item) => item.meetingId === meetingId),
+        )
+        .map((claim) => ({
+          entity: toSummary(entity),
+          claim,
+          previousClaim: claim.supersedesClaimId
+            ? entity.claims.find((item) => item.id === claim.supersedesClaimId)
+            : undefined,
+        })),
     );
   }
 
@@ -109,7 +131,17 @@ export class DemoKnowledgeRepository implements KnowledgeRepository {
     );
   }
 
+  async getTrailVocabulary() {
+    return [
+      ...new Set(demoEntities.flatMap((item) => [item.name, ...item.aliases])),
+    ];
+  }
+
   async getCaptureByBotId() {
+    return null;
+  }
+
+  async getCaptureByMeetingId() {
     return null;
   }
 

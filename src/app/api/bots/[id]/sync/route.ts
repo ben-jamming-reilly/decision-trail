@@ -43,11 +43,48 @@ export async function POST(
     }
 
     if (
+      recording?.id &&
+      recording.status?.code === "done" &&
+      !capture.transcriptId &&
+      !transcript?.id
+    ) {
+      const keyTerms = await repository.getTrailVocabulary(capture.trailId);
+      const created = await getRecallClient().createAsyncTranscript(
+        recording.id,
+        keyTerms,
+      );
+      await repository.updateCapture(capture.id, {
+        status: "processing",
+        statusDetail: keyTerms.length
+          ? `Transcribing with ${keyTerms.length} trail key terms`
+          : "Transcribing recording",
+        recordingId: recording.id,
+        transcriptId: created.id,
+      });
+    }
+
+    if (transcript?.status?.code === "failed") {
+      const message = "Post-meeting transcription failed";
+      await repository.updateCapture(capture.id, {
+        status: "failed",
+        statusDetail: transcript.status.code,
+        error: message,
+      });
+      return NextResponse.json({
+        botId: bot.id,
+        status: "fatal",
+        transcriptStatus: transcript.status.code,
+        analysisError: message,
+      });
+    }
+
+    if (
       transcript?.id &&
       transcript.status?.code === "done" &&
       !capture.meetingId
     ) {
       const input = await getRecallClient().getCompletedTranscript({
+        trailId: capture.trailId,
         transcriptId: transcript.id,
         recordingId: recording?.id,
         botId: bot.id,

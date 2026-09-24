@@ -9,7 +9,15 @@ export interface RecallWord {
 
 export interface RecallTranscriptSegment {
   speaker?: string | null;
-  participant?: { name?: string | null };
+  participant?: {
+    id?: number | string | null;
+    name?: string | null;
+    email?: string | null;
+    platform?: string | null;
+    extra_data?: {
+      zoom?: { conf_user_id?: string | null; user_conf_id?: string | null };
+    } | null;
+  };
   words: RecallWord[];
 }
 
@@ -28,12 +36,19 @@ export interface RecallTranscriptArtifact {
   metadata?: Record<string, unknown>;
 }
 
+export interface RecallMediaArtifact {
+  id: string;
+  status?: { code?: string };
+  data?: { download_url?: string };
+}
+
 export interface RecallRecording {
   id: string;
   status?: { code?: string };
   media_shortcuts?: {
     transcript?:
       (RecallTranscriptArtifact & { status?: { code?: string } }) | null;
+    video_mixed?: RecallMediaArtifact | null;
   };
 }
 
