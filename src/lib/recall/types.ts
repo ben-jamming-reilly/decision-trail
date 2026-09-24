@@ -22,17 +22,28 @@ export const RECALL_REGIONS = [
 
 export type RecallRegion = (typeof RECALL_REGIONS)[number];
 
-export interface RecallTranscriptDoneEvent {
-  event: "transcript.done";
-  data: {
-    transcript: { id: string };
-    recording?: { id: string };
-    bot?: { id: string };
-  };
-}
-
 export interface RecallTranscriptArtifact {
   id: string;
   data: { download_url: string };
   metadata?: Record<string, unknown>;
+}
+
+export interface RecallRecording {
+  id: string;
+  status?: { code?: string };
+  media_shortcuts?: {
+    transcript?:
+      (RecallTranscriptArtifact & { status?: { code?: string } }) | null;
+  };
+}
+
+export interface RecallBot {
+  id: string;
+  metadata?: Record<string, unknown>;
+  status_changes?: Array<{
+    code: string;
+    sub_code?: string | null;
+    created_at: string;
+  }>;
+  recordings?: RecallRecording[];
 }

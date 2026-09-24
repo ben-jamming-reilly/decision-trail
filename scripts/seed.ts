@@ -46,6 +46,9 @@ async function seed() {
         target: meeting.id,
         set: {
           title: demoMeeting.title,
+          startedAt: new Date(demoMeeting.startedAt),
+          recallBotId: demoMeeting.recallBotId,
+          recallTranscriptId: `demo-transcript-${meetingIndex + 1}`,
           participants: demoMeeting.participants,
         },
       });
@@ -65,7 +68,12 @@ async function seed() {
         })
         .onConflictDoUpdate({
           target: [utterance.meetingId, utterance.ordinal],
-          set: { text: item.text, speaker: item.speaker },
+          set: {
+            text: item.text,
+            speaker: item.speaker,
+            startSeconds: item.startSeconds,
+            endSeconds: item.endSeconds,
+          },
         });
     }
   }
@@ -86,7 +94,14 @@ async function seed() {
       })
       .onConflictDoUpdate({
         target: entity.id,
-        set: { name: demoEntity.name, description: demoEntity.description },
+        set: {
+          slug: demoEntity.slug,
+          name: demoEntity.name,
+          kind: demoEntity.kind,
+          description: demoEntity.description,
+          aliases: demoEntity.aliases,
+          updatedAt: new Date(demoEntity.updatedAt),
+        },
       });
     for (const demoClaim of demoEntity.claims) {
       const id = stableUuid(claimNumber++);
@@ -104,8 +119,16 @@ async function seed() {
         })
         .onConflictDoUpdate({
           target: claim.id,
-          set: { text: demoClaim.text, state: demoClaim.state },
+          set: {
+            entityId: demoEntity.id,
+            text: demoClaim.text,
+            state: demoClaim.state,
+            confidence: demoClaim.confidence,
+            recordedAt: new Date(demoClaim.recordedAt),
+            supersedesClaimId: null,
+          },
         });
+      await db.delete(claimEvidence).where(eq(claimEvidence.claimId, id));
       for (const item of demoClaim.evidence) {
         const utteranceId = utteranceIds.get(`${item.meetingId}:${item.quote}`);
         if (!utteranceId)

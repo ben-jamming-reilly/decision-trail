@@ -1,7 +1,10 @@
 import { createHmac } from "node:crypto";
 import { describe, expect, it } from "vitest";
-import { normalizeTranscript } from "@/integrations/recall/client";
-import { verifyRecallWebhook } from "@/integrations/recall/verify";
+import {
+  normalizeTranscript,
+  RecallClient,
+  verifyRecallWebhook,
+} from "@/lib/recall";
 
 describe("Recall webhook verification", () => {
   const secret = `whsec_${Buffer.from("test-secret").toString("base64")}`;
@@ -63,5 +66,44 @@ describe("Recall transcript normalization", () => {
         text: "Hello team.",
       },
     ]);
+  });
+});
+
+describe("Recall bot creation", () => {
+  it("sends a scheduled, disclosed bot with server-side authorization", async () => {
+    let requestUrl = "";
+    let requestInit: RequestInit | undefined;
+    const fetcher: typeof fetch = async (input, init) => {
+      requestUrl = String(input);
+      requestInit = init;
+      return new Response(JSON.stringify({ id: "bot_test" }), {
+        status: 201,
+        headers: { "content-type": "application/json" },
+      });
+    };
+    const client = new RecallClient("secret-test-key", "us-west-2", fetcher);
+
+    await expect(
+      client.createBot({
+        meetingUrl: "https://meet.google.com/abc-defg-hij",
+        title: "Product sync",
+        captureId: "capture_test",
+        joinAt: "2026-09-24T18:00:00.000Z",
+      }),
+    ).resolves.toEqual({ id: "bot_test" });
+
+    expect(requestUrl).toBe("https://us-west-2.recall.ai/api/v1/bot/");
+    const headers = new Headers(requestInit?.headers);
+    expect(headers.get("authorization")).toBe("secret-test-key");
+    expect(JSON.parse(String(requestInit?.body))).toMatchObject({
+      meeting_url: "https://meet.google.com/abc-defg-hij",
+      join_at: "2026-09-24T18:00:00.000Z",
+      bot_name: "Decision Trail",
+      metadata: {
+        recall_knowledge_capture_id: "capture_test",
+        recall_knowledge_title: "Product sync",
+      },
+      chat: { on_bot_join: { send_to: "everyone", pin: true } },
+    });
   });
 });

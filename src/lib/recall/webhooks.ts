@@ -1,0 +1,131 @@
+import { getRepository } from "@/data";
+import { ingestTranscript } from "@/lib/ai";
+import { getRecallClient } from "@/lib/recall/config";
+import type { CaptureStatus, MeetingCapture } from "@/lib/repository";
+
+type RecallResource = {
+  id?: string;
+  metadata?: Record<string, unknown> | null;
+};
+
+export type RecallWebhookEvent = {
+  event: string;
+  data?: {
+    data?: {
+      code?: string;
+      sub_code?: string | null;
+      updated_at?: string;
+    };
+    bot?: RecallResource;
+    recording?: RecallResource;
+    transcript?: RecallResource;
+  };
+};
+
+const BOT_STATUS: Record<string, CaptureStatus> = {
+  "bot.joining_call": "joining",
+  "bot.in_waiting_room": "waiting_room",
+  "bot.in_call_not_recording": "in_call",
+  "bot.in_call_recording": "recording",
+  "bot.call_ended": "processing",
+  "bot.done": "processing",
+};
+
+const FAILURE_EVENTS: Record<string, string> = {
+  "bot.fatal": "The bot stopped unexpectedly",
+  "bot.recording_permission_denied": "Recording permission was denied",
+  "recording.failed": "Recording failed",
+  "transcript.failed": "Transcription failed",
+};
+
+export async function processRecallWebhook(event: RecallWebhookEvent) {
+  const repository = getRepository();
+  const capture = await findCapture(event);
+  if (!capture) {
+    console.warn(`[webhook] ${event.event}: no matching meeting capture`);
+    return;
+  }
+
+  const failure = FAILURE_EVENTS[event.event];
+  if (failure) {
+    const detail = event.data?.data?.sub_code;
+    await repository.updateCapture(capture.id, {
+      status: "failed",
+      statusDetail: detail ?? null,
+      error: [failure, detail].filter(Boolean).join(": "),
+    });
+    return;
+  }
+
+  if (event.event.startsWith("bot.")) {
+    await processBotEvent(capture, event);
+    return;
+  }
+
+  if (event.event === "recording.done") {
+    const recordingId = event.data?.recording?.id;
+    if (!recordingId) throw new Error("recording.done had no recording id");
+    await repository.updateCapture(capture.id, {
+      status: "processing",
+      recordingId,
+    });
+    return;
+  }
+
+  if (event.event === "transcript.done") {
+    if (capture.meetingId) return;
+    const transcriptId = event.data?.transcript?.id;
+    if (!transcriptId) throw new Error("transcript.done had no transcript id");
+    const transcript = await getRecallClient().getCompletedTranscript({
+      transcriptId,
+      recordingId: event.data?.recording?.id ?? capture.recordingId,
+      botId: event.data?.bot?.id ?? capture.botId,
+      title: capture.title,
+    });
+    const { meetingId, extractedClaims, analysisError } =
+      await ingestTranscript(repository, transcript);
+    await repository.updateCapture(capture.id, {
+      status: "ready",
+      statusDetail: analysisError
+        ? "Transcript ready; AI extraction needs attention"
+        : `AI extracted ${extractedClaims} claim${extractedClaims === 1 ? "" : "s"}`,
+      transcriptId,
+      meetingId,
+      error: analysisError ?? null,
+    });
+  }
+}
+
+async function findCapture(event: RecallWebhookEvent) {
+  const repository = getRepository();
+  const captureId = event.data?.bot?.metadata?.recall_knowledge_capture_id;
+  if (typeof captureId === "string") {
+    const capture = await repository.getCapture(captureId);
+    if (capture) return capture;
+  }
+  const botId = event.data?.bot?.id;
+  return botId ? repository.getCaptureByBotId(botId) : null;
+}
+
+async function processBotEvent(
+  capture: MeetingCapture,
+  event: RecallWebhookEvent,
+) {
+  const status = BOT_STATUS[event.event];
+  if (!status) return;
+  if (capture.status === "ready" || capture.status === "failed") return;
+  if (capture.status === "processing" && status !== "processing") return;
+  const eventAt = event.data?.data?.updated_at;
+  if (
+    eventAt &&
+    capture.lastBotEventAt &&
+    Date.parse(eventAt) <= Date.parse(capture.lastBotEventAt)
+  ) {
+    return;
+  }
+  await getRepository().updateCapture(capture.id, {
+    status,
+    statusDetail: event.data?.data?.sub_code ?? null,
+    ...(eventAt ? { lastBotEventAt: eventAt } : {}),
+  });
+}

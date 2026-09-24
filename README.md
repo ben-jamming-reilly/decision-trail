@@ -1,32 +1,51 @@
-# Recall Knowledge
+# Decision Trail
 
-Recall Knowledge turns a sequence of meeting transcripts into a living,
-source-grounded wiki. It is a deliberately small foundation for longitudinal
-conversation intelligence: every extracted statement is a **claim**, every
-claim points to verbatim transcript evidence, and older or conflicting claims
-remain visible instead of being silently overwritten.
+Decision Trail is a conversation-first company memory for product and
+engineering decisions.
 
-The included walkthrough follows the fictional Atlas initiative across three
-meetings. A March 15 pilot target is superseded by April 2, an optimistic
-partner-count claim is disputed, and a later meeting confirms launch readiness.
+> Recall captures what happened in each conversation. Decision Trail turns
+> those conversations into the company’s evolving memory—what it currently
+> believes, what changed, and the evidence behind it.
 
-## What is included
+Every extracted statement is a **claim** linked to verbatim transcript
+evidence. Newer claims can supersede earlier ones, disputed assumptions remain
+visible, and the current state never loses its source trail.
 
-- Next.js 16 App Router UI and JSON query endpoint
-- OpenNext configuration for Cloudflare Workers
-- PostgreSQL-only persistence with Drizzle schema and migrations
-- Recall.ai client with retry handling for 429, 503, and 507 responses
-- verified webhook endpoint with raw-body HMAC verification and replay protection
-- post-meeting `transcript.done` retrieval and transcript normalization
-- immutable meeting/utterance evidence and append-oriented claim history
-- domain-neutral `KnowledgeTemplate` contract for later verticalization
-- fixture walkthrough plus idempotent PostgreSQL seed script
-- entity wiki, claim timeline, transcript pages, and cross-meeting search
+## The included walkthrough
 
-There is no Redis, queue, graph database, separate backend, real-time transcript
-path, or unrelated product integration.
+The seeded story follows one enterprise capability across three meetings:
 
-## Quick walkthrough (no credentials required)
+1. **Enterprise customer discovery** establishes demand for workspace-level
+   bulk export for audits and offboarding.
+2. **Bulk export product planning** chooses a CSV-based V1, assigns Priya to the
+   rollout, and targets March 15.
+3. **Bulk export engineering review** discovers a permission/security
+   dependency, moves the target to April 2, assigns Sam to filtering, and leaves
+   audit logging as an open question.
+
+The UI exposes current requirements and decisions, commitments and owners,
+risks and open questions, active/disputed/superseded history, and evidence with
+meeting, speaker, timestamp, and quote.
+
+## Seeded and live paths
+
+Decision Trail deliberately separates two capabilities:
+
+- **Seeded decision intelligence** demonstrates the intended longitudinal
+  output: extracted claims, changes, ownership, risks, and linked evidence.
+- **Live Recall + OpenAI ingestion** sends a bot to a meeting, imports the
+  completed transcript, then uses the Vercel AI SDK with OpenAI Structured
+  Outputs to extract claims that cite exact utterance IDs.
+
+Cross-meeting questions first retrieve deterministic claim matches, then stream
+an AI synthesis grounded only in those claims and their transcript passages.
+The matching source cards remain visible beneath the answer.
+
+Live transcript text and retrieved evidence are sent to the configured OpenAI
+account for these features. Provider storage is disabled in AI SDK requests;
+review the account's applicable data controls before using customer meetings.
+
+## Quick walkthrough without credentials
 
 Use Node.js 20.18 or newer (Node 22 LTS is recommended for OpenNext builds).
 
@@ -35,25 +54,40 @@ pnpm install
 cp .env.example .env.local
 ```
 
-Set `DEMO_MODE=true` in `.env.local`, then:
+Set `DEMO_MODE=true`, run `pnpm dev`, and open
+[http://localhost:3000](http://localhost:3000). Then:
 
-```bash
-pnpm dev
-```
+1. Review the current decision snapshot on the overview.
+2. Ask **“Why was the launch delayed?”**.
+3. Ask **“What changed about the target date?”**.
+4. Ask **“Which customer conversations influenced this requirement?”**.
+5. Open **Enterprise bulk export** and compare active, disputed, and superseded
+   claims.
+6. Follow an evidence card to the exact speaker and timestamp in the source
+   transcript.
+7. Open **New Meeting** to see the separate live Recall capture path.
 
-Open [http://localhost:3000](http://localhost:3000). Suggested flow:
+Demo mode is an in-process, read-only fixture, not a second datastore.
+Production persistence is PostgreSQL only.
 
-1. Ask **“What changed about the Atlas pilot?”** on the overview or query page.
-2. Open **Atlas pilot** and compare active, superseded, and disputed claims.
-3. Follow an evidence card into the exact speaker/timestamp in a meeting.
-4. Open **Identity migration** to see one dependency evolve across meetings.
+## What is included
 
-Demo mode is an in-process, read-only walkthrough—not a second datastore. All
-production persistence uses PostgreSQL.
+- Next.js 16 App Router UI and JSON query endpoint
+- OpenNext configuration for Cloudflare Workers
+- PostgreSQL-only persistence with Drizzle schema and migrations
+- Recall.ai bot creation with retry handling for 429, 503, and 507 responses
+- verified raw-body webhook HMAC handling with replay protection
+- post-meeting `transcript.done` retrieval and transcript normalization
+- immutable meeting/utterance evidence and append-oriented claim history
+- Vercel AI SDK with the dedicated OpenAI provider for grounded answers and
+  structured claim extraction
+- domain-neutral `KnowledgeTemplate` for extraction and verticalization
+- idempotent fixture seed, decision history, evidence pages, and retrieval
+
+There is no Redis, queue, graph database, separate backend, real-time transcript
+path, or unrelated product integration.
 
 ## PostgreSQL setup
-
-Create a database and copy the example environment file:
 
 ```bash
 createdb recall_knowledge
@@ -68,96 +102,126 @@ pnpm db:seed
 pnpm dev
 ```
 
-`db:seed` is idempotent and loads the same three-meeting walkthrough into
-PostgreSQL. Drizzle's typed source schema is in
-`src/db/schema/knowledge.ts`; generated SQL is committed under `drizzle/`.
-Schema conventions and invariants are documented in `rules/db-schema.md`.
+`db:seed` is idempotent and loads the same three-meeting story into PostgreSQL.
+The typed schema lives in `src/db/schema/knowledge.ts`; generated SQL is under
+`drizzle/`; schema conventions are documented in `rules/db-schema.md`.
 
 ## Recall.ai setup
 
-| Variable                | Required   | Purpose                                                       |
-| ----------------------- | ---------- | ------------------------------------------------------------- |
-| `DATABASE_URL`          | production | PostgreSQL connection string                                  |
-| `DEMO_MODE`             | no         | `true` forces the walkthrough; `false` requires PostgreSQL    |
-| `RECALL_API_KEY`        | ingestion  | server-only Recall API key                                    |
-| `RECALL_WEBHOOK_SECRET` | ingestion  | verification secret beginning with `whsec_`                   |
-| `RECALL_REGION`         | ingestion  | `us-west-2`, `us-east-1`, `eu-central-1`, or `ap-northeast-1` |
+| Variable                | Required   | Purpose                                            |
+| ----------------------- | ---------- | -------------------------------------------------- |
+| `DATABASE_URL`          | production | PostgreSQL connection string                       |
+| `DEMO_MODE`             | no         | `true` uses fixtures; `false` requires PostgreSQL  |
+| `RECALL_API_KEY`        | ingestion  | server-only Recall API key                         |
+| `RECALL_WEBHOOK_SECRET` | ingestion  | verification secret beginning with `whsec_`        |
+| `RECALL_REGION`         | ingestion  | Recall deployment region                           |
+| `PUBLIC_API_BASE_URL`   | local dev  | stable public ngrok origin, without a trailing `/` |
+| `OPENAI_API_KEY`        | AI         | server-only key used by the AI SDK                 |
+| `OPENAI_MODEL`          | no         | OpenAI model; defaults to `gpt-5-mini`             |
 
-Never expose these values in client code. The application sends Recall API
-credentials only from the server and never commits `.env*` files.
+Never expose these values in client code or commit `.env*` files.
 
-Configure a Recall webhook endpoint at:
+Choose **New Meeting**, provide a supported HTTPS meeting link, and send the bot
+immediately or schedule it. The server gives the Recall bot an explicit
+recording notice, stores correlation metadata, and enables transcription. Local
+tests can poll and import a completed transcript; deployed environments should
+use the verified webhook as the primary lifecycle path. Once stored, the
+transcript is analyzed into domain-neutral claims. If extraction fails, the
+transcript remains available and the capture reports the analysis error.
 
-```text
-https://YOUR_HOST/api/webhooks/recall
+For local development, claim a static domain in the ngrok dashboard and save
+its HTTPS origin as `PUBLIC_API_BASE_URL` in `.env.local`. Run the app and point
+ngrok directly to the Next.js port in a second terminal—no relay process is
+needed:
+
+```bash
+# Terminal 1
+pnpm dev
+
+# Terminal 2
+ngrok http --url https://your-static-domain.ngrok-free.app 3000
 ```
 
-Subscribe at minimum to `transcript.done`; subscribing to `transcript.failed`,
-`recording.done`, and bot lifecycle events also preserves them in the webhook
-audit table. For local testing, expose the Next.js server with a stable HTTPS
-tunnel. Recall's [verification guide](https://docs.recall.ai/docs/authenticating-requests-from-recallai)
-describes workspace secrets, and its [post-meeting transcription guide](https://docs.recall.ai/docs/async-transcription)
-describes the artifact lifecycle.
+Current ngrok releases prefer `--url`; older releases accept Recall's
+documented `--domain` form. When a request arrives on `PUBLIC_API_BASE_URL`, the
+Next.js proxy exposes only `POST /api/webhooks/recall` and returns `404` for the
+rest of the app. Requests made directly to localhost are unaffected.
 
-The handler verifies the exact raw request body, accepts both current
-`webhook-*` and legacy `svix-*` headers, rejects deliveries outside a five-minute
-window, downloads the short-lived transcript URL immediately, and upserts the
-meeting by Recall transcript ID.
+Configure the Recall webhook endpoint as:
+
+```text
+${PUBLIC_API_BASE_URL}/api/webhooks/recall
+```
+
+Copy the verification secret associated with the Recall workspace or webhook
+endpoint into `RECALL_WEBHOOK_SECRET`, then restart `pnpm dev`. The handler
+verifies Recall's signature against the unmodified request body before it
+records or processes the event.
+
+Subscribe at minimum to `transcript.done`. `transcript.failed`,
+`recording.done`, and bot lifecycle events are also retained in the webhook
+audit table. Recall documents
+[local webhook development](https://docs.recall.ai/docs/local-webhook-development),
+[webhook verification](https://docs.recall.ai/docs/authenticating-requests-from-recallai)
+and the [post-meeting transcript lifecycle](https://docs.recall.ai/docs/async-transcription).
 
 ## Architecture
 
 ```text
-Recall transcript.done
-        │ signed raw webhook
-        ▼
-Next.js route ──verify──► Recall client ──download──► normalized utterances
-        │                                                   │
-        └──────────────── PostgreSQL repository ◄───────────┘
-                                  │
-                     meetings → claims → evidence
-                                  │
-                   server pages + /api/query
+Meeting dialog ──create──► meeting_capture ──send──► Recall bot
+                                ▲                       │
+                                │ signed webhooks       │ transcript artifact
+                                └──── Next.js route ◄───┘
+                                             │
+                                             ▼
+                                  meetings → utterances
+                                             │
+                               AI SDK structured output
+                                             │
+                                             ▼
+                                  claims → evidence
+                                             │
+                            retrieval → AI SDK synthesis
+                                             │
+                                  pages + API routes
 ```
 
-Important boundaries:
+Key boundaries:
 
-- `src/integrations/recall/` owns Recall-specific transport and shapes.
-- `src/data/` implements the repository contract; pages never issue SQL.
+- `src/lib/recall/` owns Recall transport, webhook processing, and response
+  shapes.
+- `src/data/` implements the repository contract; pages do not issue SQL.
 - `src/db/schema/` owns durable records and provenance invariants.
-- `src/lib/knowledge-template.ts` owns domain vocabulary and extraction guidance.
+- `src/lib/knowledge-template.ts` owns domain-neutral extraction vocabulary.
+- `src/lib/ai/` owns the OpenAI provider, structured extractor, and grounded
+  answer generation.
 - `src/app/` contains thin pages and route handlers.
 
-This layout borrows useful conventions from the local Station application
-(pnpm, `src/`, Drizzle, Tailwind v4, OpenNext/Hyperdrive-aware database access)
-and integration lessons from Recall.ai's
-[AI interview note-taker](https://github.com/recallai/ai-interview-note-taker)
-(metadata correlation, retries, raw-body verification, and immediate download of
-expiring transcript URLs). Their broader service stacks are intentionally not
-copied.
+The structure borrows conventions from the local Station application and
+integration lessons from Recall.ai’s
+[AI interview note-taker](https://github.com/recallai/ai-interview-note-taker),
+without copying their broader service stacks.
 
-## Data model and provenance
+## Claim model and query behavior
 
-A claim is not promoted to unquestioned truth. Its lifecycle state is one of:
+Claim state is explicit:
 
 - `active`: the best currently supported statement
 - `superseded`: retained history replaced by a newer claim
-- `disputed`: supported as something said, but contradicted or contested
+- `disputed`: something said but later contradicted or contested
 
-`claim_evidence` requires every published claim to point to one or more stored
-utterances. Each utterance keeps its meeting, speaker, relative start/end time,
-and quotation. `claim_transition` is the append-only audit trail for lifecycle
-changes. The application never mutates transcript evidence during claim updates.
-
-## Query API
+`claim_evidence` connects every published claim to stored utterances with the
+meeting, speaker, relative start/end time, and quotation.
+`claim_transition` is the append-oriented lifecycle trail.
 
 ```http
-GET /api/query?q=identity
+GET /api/query?q=Why%20was%20the%20launch%20delayed%3F
 ```
 
-The endpoint currently performs PostgreSQL text matching over entity names,
-descriptions, and claims, then returns hydrated claims with evidence. It is
-intentionally transparent and deterministic. PostgreSQL full-text search or
-`pgvector` can be introduced later without adding another database.
+Search performs transparent PostgreSQL text matching over entity names,
+descriptions, and claim text. `/api/answer` uses those retrieved results to
+stream a concise source-numbered synthesis; the model never receives unrelated
+workspace data.
 
 ## Verification
 
@@ -167,45 +231,34 @@ pnpm build       # Next.js production build
 pnpm build:cf    # OpenNext Cloudflare build
 ```
 
-Tests cover signature/replay validation, Recall transcript normalization, and
-the longitudinal demo states/query behavior.
-
 ## Current limitations
 
-- The ingestion boundary stores completed transcripts; automated claim
-  extraction is represented by the template and data contracts but is not yet
-  connected to a model. The seeded claims demonstrate the intended output.
-- The webhook processes transcript download inline. For higher volume, use a
-  PostgreSQL-backed jobs table and a scheduled Worker—still no Redis required.
-- Search is lexical and does not yet summarize or synthesize an answer.
-- Authentication, workspace isolation, retention/consent controls, and PII
-  redaction must be added before handling real customer meetings.
-- Webhook audit payload retention needs an explicit production retention policy.
-- The application receives completed Recall transcripts but does not yet create
-  or schedule bots. When added, include the local meeting UUID in Recall
-  `metadata`; Recall echoes it on lifecycle webhooks for stable correlation.
+- High-volume webhook processing should move from post-response work to a
+  leased PostgreSQL job worker for durable retries across deploys.
+- Retrieval is lexical; AI synthesizes the retrieved evidence but does not yet
+  perform semantic retrieval.
+- Authentication, workspace isolation, consent/retention controls, and PII
+  redaction are required before handling real customer meetings.
+- Webhook audit payloads need an explicit production retention policy.
+- Scheduled/in-progress capture state is durable but not yet listed on the
+  overview before a transcript is ready.
 
 ## Safe extension points
 
-- Add a vertical by creating another `KnowledgeTemplate`; keep the underlying
-  claim/evidence model unchanged.
-- Add extraction behind a `ClaimExtractor` interface and require utterance IDs
-  in its structured output. Never allow uncited claims into the wiki.
-- Add entity resolution as a PostgreSQL transaction with aliases and explicit
-  merge history; do not use names as identity.
-- Add asynchronous work with a PostgreSQL jobs table and `FOR UPDATE SKIP
-LOCKED` before considering more infrastructure.
-- Add semantic search with PostgreSQL `pgvector` only if lexical retrieval proves
-  insufficient.
-- Add bot creation to the Recall client using metadata correlation and the same
-  verified webhook path.
+- Add a vertical with another `KnowledgeTemplate`; keep the claim/evidence model
+  unchanged.
+- Add a review queue for newly extracted claims before publishing them in
+  regulated or high-stakes deployments.
+- Add entity resolution with aliases and explicit merge history in PostgreSQL.
+- Add a PostgreSQL jobs table with `FOR UPDATE SKIP LOCKED` before introducing
+  more infrastructure.
+- Add `pgvector` only if lexical retrieval proves insufficient.
 
 ## Deployment with OpenNext
 
 `open-next.config.ts`, `next.config.ts`, and `wrangler.jsonc` are checked in.
-For Cloudflare, create a Hyperdrive binding named `HYPERDRIVE` that points to the
-PostgreSQL database, add secrets with `wrangler secret put`, and uncomment the
-binding in `wrangler.jsonc`. The repository also accepts `DATABASE_URL` on Node
-hosts. No Cloudflare KV, D1, or R2 binding is used for application data.
+For Cloudflare, create a Hyperdrive binding named `HYPERDRIVE`, add secrets with
+`wrangler secret put`, and uncomment the binding in `wrangler.jsonc`. Node hosts
+can use `DATABASE_URL`. Application data uses no Cloudflare KV, D1, or R2.
 
 Do not commit account IDs, database URLs, API keys, or webhook secrets.

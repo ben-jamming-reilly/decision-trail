@@ -20,6 +20,17 @@ export const claimState = pgEnum("claim_state", [
   "disputed",
 ]);
 
+export const captureStatus = pgEnum("capture_status", [
+  "scheduled",
+  "joining",
+  "waiting_room",
+  "in_call",
+  "recording",
+  "processing",
+  "ready",
+  "failed",
+]);
+
 export const meeting = pgTable(
   "meeting",
   {
@@ -40,6 +51,37 @@ export const meeting = pgTable(
       table.recallTranscriptId,
     ),
     index("meeting_started_at_idx").on(table.startedAt),
+  ],
+);
+
+export const meetingCapture = pgTable(
+  "meeting_capture",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    title: text("title").notNull(),
+    meetingUrl: text("meeting_url").notNull(),
+    joinAt: timestamp("join_at", { withTimezone: true }).notNull(),
+    botId: text("bot_id"),
+    status: captureStatus("status").default("scheduled").notNull(),
+    statusDetail: text("status_detail"),
+    lastBotEventAt: timestamp("last_bot_event_at", { withTimezone: true }),
+    recordingId: text("recording_id"),
+    transcriptId: text("transcript_id"),
+    meetingId: uuid("meeting_id").references(() => meeting.id, {
+      onDelete: "set null",
+    }),
+    error: text("error"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    uniqueIndex("meeting_capture_bot_id_uidx").on(table.botId),
+    index("meeting_capture_status_idx").on(table.status),
+    index("meeting_capture_join_at_idx").on(table.joinAt),
   ],
 );
 
@@ -179,5 +221,6 @@ export const knowledgeTemplate = pgTable("knowledge_template", {
 });
 
 export type MeetingRow = typeof meeting.$inferSelect;
+export type MeetingCaptureRow = typeof meetingCapture.$inferSelect;
 export type EntityRow = typeof entity.$inferSelect;
 export type ClaimRow = typeof claim.$inferSelect;

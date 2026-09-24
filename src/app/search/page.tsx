@@ -5,7 +5,7 @@ export default function SearchPage() {
     <div className="page-wrap inner-page">
       <div className="page-heading">
         <p className="eyebrow">Cross-meeting query</p>
-        <h1>Ask the knowledge base</h1>
+        <h1>Ask across meetings</h1>
         <p>
           Results are claims, not generated answers. Every result links back to
           its evidence.

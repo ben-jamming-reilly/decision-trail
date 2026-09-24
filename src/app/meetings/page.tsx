@@ -11,8 +11,11 @@ export default async function MeetingsPage() {
     <div className="page-wrap inner-page">
       <div className="page-heading">
         <p className="eyebrow">Source trail</p>
-        <h1>Meetings</h1>
-        <p>Immutable transcript evidence from Recall.ai.</p>
+        <h1>Conversations</h1>
+        <p>
+          Timestamped Recall evidence. Seeded meetings support the decision
+          walkthrough; new live captures import transcripts only.
+        </p>
       </div>
       <div className="meetings-table">
         {meetings.map((meeting) => (

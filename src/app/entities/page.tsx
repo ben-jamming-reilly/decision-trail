@@ -9,9 +9,12 @@ export default async function EntitiesPage() {
   return (
     <div className="page-wrap inner-page">
       <div className="page-heading">
-        <p className="eyebrow">Knowledge wiki</p>
-        <h1>Entities</h1>
-        <p>Every claim stays connected to the conversation that produced it.</p>
+        <p className="eyebrow">Decision memory</p>
+        <h1>What the company currently believes</h1>
+        <p>
+          Requirements, decisions, risks, and commitments—each connected to the
+          conversation that produced it.
+        </p>
       </div>
       <div className="entity-grid">
         {entities.map((entity) => (

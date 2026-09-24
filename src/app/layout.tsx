@@ -3,8 +3,9 @@ import { Shell } from "@/components/shell";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: { default: "Recall Knowledge", template: "%s · Recall Knowledge" },
-  description: "An evolving, evidence-grounded wiki built from conversations.",
+  title: { default: "Decision Trail", template: "%s · Decision Trail" },
+  description:
+    "Conversation-first memory for decisions, changes, and their evidence.",
 };
 
 export default function RootLayout({

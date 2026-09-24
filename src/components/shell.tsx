@@ -1,28 +1,74 @@
 import Link from "next/link";
-import { SearchIcon, SparkIcon } from "@/components/icons";
+import {
+  BookOpen,
+  CalendarDays,
+  CircleHelp,
+  Database,
+  LayoutDashboard,
+  GitBranch,
+  Search,
+  Settings,
+} from "lucide-react";
 
 export function Shell({ children }: { children: React.ReactNode }) {
   return (
     <div className="app-shell">
-      <header className="topbar">
-        <Link href="/" className="brand" aria-label="Recall Knowledge home">
+      <aside className="sidebar">
+        <Link href="/" className="brand" aria-label="Decision Trail home">
           <span className="brand-mark">
-            <SparkIcon />
+            <GitBranch size={17} />
+          </span>
+          <span>Decision Trail</span>
+        </Link>
+        <nav className="sidebar-nav" aria-label="Primary navigation">
+          <p>Workspace</p>
+          <Link href="/">
+            <LayoutDashboard />
+            Overview
+          </Link>
+          <Link href="/entities">
+            <BookOpen />
+            Decision memory
+          </Link>
+          <Link href="/meetings">
+            <CalendarDays />
+            Conversations
+          </Link>
+          <Link href="/search">
+            <Search />
+            Ask across meetings
+          </Link>
+        </nav>
+        <div className="sidebar-nav sidebar-bottom">
+          <p>System</p>
+          <span>
+            <Database />
+            PostgreSQL connected
           </span>
           <span>
-            Recall <b>Knowledge</b>
+            <Settings />
+            Domain-neutral template
           </span>
-        </Link>
-        <nav className="nav-links" aria-label="Primary navigation">
-          <Link href="/">Overview</Link>
-          <Link href="/entities">Wiki</Link>
-          <Link href="/meetings">Meetings</Link>
-        </nav>
-        <Link href="/search" className="search-link">
-          <SearchIcon /> Ask the knowledge base
-        </Link>
-      </header>
-      <main>{children}</main>
+          <a href="https://docs.recall.ai" target="_blank" rel="noreferrer">
+            <CircleHelp />
+            Recall.ai docs
+          </a>
+        </div>
+      </aside>
+      <div className="content-shell">
+        <header className="topbar">
+          <div>
+            <span>Workspace</span>
+            <b>/</b>
+            <strong>Decision memory</strong>
+          </div>
+          <Link href="/search" className="search-link">
+            <Search />
+            Search<span className="shortcut">⌘ K</span>
+          </Link>
+        </header>
+        <main>{children}</main>
+      </div>
     </div>
   );
 }

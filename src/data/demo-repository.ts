@@ -1,7 +1,12 @@
 import { demoEntities, demoMeetings } from "@/lib/demo-data";
 import type { Entity, EntitySummary } from "@/lib/domain";
-import type { KnowledgeRepository, TranscriptInput } from "@/lib/repository";
-import { queryTerms } from "@/lib/search";
+import type {
+  CapturePatch,
+  KnowledgeRepository,
+  MeetingCapture,
+  TranscriptInput,
+} from "@/lib/repository";
+import { queryTerms, scoreSearchResult } from "@/lib/search";
 
 function toSummary(entity: Entity): EntitySummary {
   return {
@@ -69,11 +74,11 @@ export class DemoKnowledgeRepository implements KnowledgeRepository {
     return demoEntities
       .flatMap((entity) =>
         entity.claims.map((claim) => {
-          const searchable =
-            `${entity.name} ${entity.description} ${claim.text}`.toLowerCase();
-          const score = terms.filter((term) =>
-            searchable.includes(term),
-          ).length;
+          const score = scoreSearchResult(terms, {
+            claim: claim.text,
+            entityName: entity.name,
+            entityDescription: entity.description,
+          });
           return { entity: toSummary(entity), claim, score };
         }),
       )
@@ -86,13 +91,40 @@ export class DemoKnowledgeRepository implements KnowledgeRepository {
       .slice(0, 12);
   }
 
-  async hasWebhook() {
-    return false;
-  }
-
-  async recordWebhook() {
+  async recordWebhook(): Promise<boolean> {
     throw new Error(
       "Demo mode is read-only; configure DATABASE_URL to ingest webhooks",
+    );
+  }
+
+  async completeWebhook() {
+    throw new Error(
+      "Demo mode is read-only; configure DATABASE_URL to process webhooks",
+    );
+  }
+
+  async createCapture(): Promise<MeetingCapture> {
+    throw new Error(
+      "Demo mode is read-only; configure DATABASE_URL to create meeting bots",
+    );
+  }
+
+  async getCaptureByBotId() {
+    return null;
+  }
+
+  async getCapture() {
+    return null;
+  }
+
+  async updateCapture(
+    _id: string,
+    _patch: CapturePatch,
+  ): Promise<MeetingCapture | null> {
+    void _id;
+    void _patch;
+    throw new Error(
+      "Demo mode is read-only; configure DATABASE_URL to update meeting bots",
     );
   }
 
@@ -100,6 +132,12 @@ export class DemoKnowledgeRepository implements KnowledgeRepository {
     void input;
     throw new Error(
       "Demo mode is read-only; configure DATABASE_URL to ingest transcripts",
+    );
+  }
+
+  async saveExtractedClaims(): Promise<number> {
+    throw new Error(
+      "Demo mode is read-only; configure DATABASE_URL to save extracted claims",
     );
   }
 }

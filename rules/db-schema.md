@@ -19,6 +19,7 @@ defined in `src/db/schema/knowledge.ts`; generated SQL lives in `drizzle/`.
 ## Core model
 
 - `meeting`: one completed Recall recording/transcript.
+- `meeting_capture`: durable pre-transcript bot scheduling and lifecycle state.
 - `utterance`: speaker-attributed transcript span with relative timestamps.
 - `entity`: a reusable wiki subject (initiative, person, organization, etc.).
 - `claim`: an extracted statement about one entity, with lifecycle state.

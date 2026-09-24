@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { ArrowIcon } from "@/components/icons";
+import { NewMeetingDialog } from "@/components/new-meeting-dialog";
 import { QueryBox } from "@/components/query-box";
 import { StatusPill } from "@/components/status-pill";
 import { getRepository } from "@/data";
@@ -14,38 +15,50 @@ export default async function OverviewPage() {
     repository.listEntities(),
     repository.listMeetings(),
   ]);
-  const featured = await repository.getEntity("atlas-pilot");
+  const [featured, ownership, risks] = await Promise.all([
+    repository.getEntity("enterprise-bulk-export"),
+    repository.getEntity("bulk-export-ownership"),
+    repository.getEntity("permission-aware-export"),
+  ]);
 
   return (
     <div className="page-wrap">
-      <section className="hero">
+      <section className="dashboard-header">
         <div>
-          <p className="eyebrow">Longitudinal conversation intelligence</p>
-          <h1>
-            What your team knows,
-            <br />
-            <em>with receipts.</em>
-          </h1>
-          <p className="hero-copy">
-            A living knowledge base that remembers what changed, who said it,
-            and where the evidence lives.
+          <p className="eyebrow">Conversation-first company memory</p>
+          <h1>Decision Trail</h1>
+          <p>
+            Recall captures what happened in each conversation. Decision Trail
+            turns those conversations into the company&apos;s evolving
+            memory—what it currently believes, what changed, and the evidence
+            behind it.
           </p>
         </div>
-        <div className="hero-orbit" aria-hidden="true">
-          <div className="orbit-card one">
-            <span>JAN 12</span>March 15 target
+        <div className="dashboard-actions">
+          <div className="integration-badge">
+            <span />
+            Live Recall capture ready
           </div>
-          <div className="orbit-line" />
-          <div className="orbit-card two">
-            <span>FEB 03</span>April 2 agreed
-          </div>
-          <div className="orbit-card three">
-            <span>FEB 18</span>8 partners confirmed
-          </div>
+          <NewMeetingDialog />
         </div>
       </section>
 
-      <QueryBox />
+      <section className="demo-boundary" aria-label="Demo data boundaries">
+        <div>
+          <strong>Seeded decision intelligence</strong>
+          <p>
+            This walkthrough uses an extracted, longitudinal story across three
+            meetings so you can inspect claims, changes, and citations.
+          </p>
+        </div>
+        <div>
+          <strong>Live Recall ingestion</strong>
+          <p>
+            New Meeting captures transcript evidence, then OpenAI extracts
+            structured claims with exact passage citations.
+          </p>
+        </div>
+      </section>
 
       <section className="stats-grid">
         {Object.entries(stats).map(([label, value]) => (
@@ -59,17 +72,64 @@ export default async function OverviewPage() {
       <section className="section-block">
         <div className="section-heading">
           <div>
-            <p className="eyebrow">Evolving knowledge</p>
-            <h2>One subject, every version</h2>
+            <h2>Current decision snapshot</h2>
+            <p>
+              The present state, with every statement traceable to a
+              conversation.
+            </p>
+          </div>
+        </div>
+        <div className="decision-grid">
+          <article className="decision-card">
+            <span className="kind">Decision &amp; requirement</span>
+            {featured?.claims
+              .filter((claim) => claim.state === "active")
+              .slice(0, 2)
+              .map((claim) => (
+                <p key={claim.id}>{claim.text}</p>
+              ))}
+          </article>
+          <article className="decision-card">
+            <span className="kind">Commitments &amp; owners</span>
+            {ownership?.claims.map((claim) => (
+              <p key={claim.id}>{claim.text}</p>
+            ))}
+          </article>
+          <article className="decision-card">
+            <span className="kind">Risks &amp; open questions</span>
+            {risks?.claims
+              .filter((claim) => claim.state === "active")
+              .map((claim) => (
+                <p key={claim.id}>{claim.text}</p>
+              ))}
+          </article>
+        </div>
+      </section>
+
+      <section className="ask-card">
+        <div className="card-heading">
+          <div>
+            <h2>Ask across meetings</h2>
+            <p>Search entities and claims with linked transcript evidence.</p>
+          </div>
+        </div>
+        <QueryBox />
+      </section>
+
+      <section className="section-block">
+        <div className="section-heading">
+          <div>
+            <h2>What changed</h2>
+            <p>Follow the target date, assumptions, and evidence over time.</p>
           </div>
           <Link href="/entities">
-            Browse the wiki <ArrowIcon />
+            Browse decision memory <ArrowIcon />
           </Link>
         </div>
         {featured && (
           <div className="feature-card">
             <div className="feature-summary">
-              <span className="kind">{featured.kind}</span>
+              <span className="kind">Featured {featured.kind}</span>
               <h3>{featured.name}</h3>
               <p>{featured.description}</p>
               <Link href={`/entities/${featured.slug}`}>
@@ -97,8 +157,8 @@ export default async function OverviewPage() {
 
       <section className="section-block split-section">
         <div>
-          <p className="eyebrow">Recently updated</p>
-          <h2>Knowledge wiki</h2>
+          <p className="section-label">Recently updated</p>
+          <h2>Decision memory</h2>
           <div className="entity-list">
             {entities.map((entity) => (
               <Link href={`/entities/${entity.slug}`} key={entity.id}>
@@ -115,7 +175,7 @@ export default async function OverviewPage() {
           </div>
         </div>
         <div>
-          <p className="eyebrow">Source trail</p>
+          <p className="section-label">Source trail</p>
           <h2>Recent meetings</h2>
           <div className="meeting-list">
             {meetings.map((meeting) => (

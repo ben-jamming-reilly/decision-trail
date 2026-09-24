@@ -1,16 +1,34 @@
-import { asc, count, desc, eq, ilike, inArray, or, sql } from "drizzle-orm";
+import {
+  and,
+  asc,
+  count,
+  desc,
+  eq,
+  ilike,
+  inArray,
+  or,
+  sql,
+} from "drizzle-orm";
 import type { Database } from "@/db";
 import {
   claim,
   claimEvidence,
+  claimTransition,
   entity,
   meeting,
+  meetingCapture,
   utterance,
   webhookEvent,
 } from "@/db/schema";
 import type { Claim, Evidence, QueryResult } from "@/lib/domain";
-import type { KnowledgeRepository, TranscriptInput } from "@/lib/repository";
-import { queryTerms } from "@/lib/search";
+import type {
+  CapturePatch,
+  ExtractedEntityInput,
+  KnowledgeRepository,
+  MeetingCapture,
+  TranscriptInput,
+} from "@/lib/repository";
+import { queryTerms, scoreSearchResult } from "@/lib/search";
 
 export class PostgresKnowledgeRepository implements KnowledgeRepository {
   constructor(private readonly db: Database) {}
@@ -146,41 +164,112 @@ export class PostgresKnowledgeRepository implements KnowledgeRepository {
       ...new Set(matchingClaims.map((item) => item.entity.id)),
     ];
     const hydrated = await this.claimsForEntities(entityIds);
-    return matchingClaims.flatMap(({ entity: item, claim: rawClaim }) => {
-      const claims = hydrated.get(item.id) ?? [];
-      const hydratedClaim = claims.find((value) => value.id === rawClaim.id);
-      if (!hydratedClaim) return [];
-      return [
-        {
-          entity: {
-            ...item,
-            updatedAt: item.updatedAt.toISOString(),
-            claimCount: claims.length,
-            activeClaimCount: claims.filter((value) => value.state === "active")
-              .length,
+    return matchingClaims
+      .flatMap(({ entity: item, claim: rawClaim }) => {
+        const claims = hydrated.get(item.id) ?? [];
+        const hydratedClaim = claims.find((value) => value.id === rawClaim.id);
+        if (!hydratedClaim) return [];
+        return [
+          {
+            entity: {
+              ...item,
+              updatedAt: item.updatedAt.toISOString(),
+              claimCount: claims.length,
+              activeClaimCount: claims.filter(
+                (value) => value.state === "active",
+              ).length,
+            },
+            claim: hydratedClaim,
+            score: scoreSearchResult(terms, {
+              claim: rawClaim.text,
+              entityName: item.name,
+              entityDescription: item.description,
+            }),
           },
-          claim: hydratedClaim,
-          score: 1,
-        },
-      ];
-    });
-  }
-
-  async hasWebhook(eventId: string) {
-    const [row] = await this.db
-      .select({ id: webhookEvent.id })
-      .from(webhookEvent)
-      .where(eq(webhookEvent.id, eventId));
-    return Boolean(row);
+        ];
+      })
+      .sort(
+        (a, b) =>
+          b.score - a.score ||
+          b.claim.recordedAt.localeCompare(a.claim.recordedAt),
+      );
   }
 
   async recordWebhook(eventId: string, eventType: string, payload: unknown) {
-    await this.db.insert(webhookEvent).values({
-      id: eventId,
-      eventType,
-      payload,
-      processedAt: new Date(),
-    });
+    const rows = await this.db
+      .insert(webhookEvent)
+      .values({ id: eventId, eventType, payload })
+      .onConflictDoNothing()
+      .returning({ id: webhookEvent.id });
+    return rows.length > 0;
+  }
+
+  async completeWebhook(eventId: string, error?: string) {
+    await this.db
+      .update(webhookEvent)
+      .set({ processedAt: new Date(), error: error ?? null })
+      .where(eq(webhookEvent.id, eventId));
+  }
+
+  async createCapture(input: {
+    title: string;
+    meetingUrl: string;
+    joinAt: string;
+  }) {
+    const [row] = await this.db
+      .insert(meetingCapture)
+      .values({
+        title: input.title,
+        meetingUrl: input.meetingUrl,
+        joinAt: new Date(input.joinAt),
+      })
+      .returning();
+    return toCapture(row);
+  }
+
+  async getCapture(id: string) {
+    const [row] = await this.db
+      .select()
+      .from(meetingCapture)
+      .where(eq(meetingCapture.id, id));
+    return row ? toCapture(row) : null;
+  }
+
+  async getCaptureByBotId(botId: string) {
+    const [row] = await this.db
+      .select()
+      .from(meetingCapture)
+      .where(eq(meetingCapture.botId, botId));
+    return row ? toCapture(row) : null;
+  }
+
+  async updateCapture(id: string, patch: CapturePatch) {
+    const [row] = await this.db
+      .update(meetingCapture)
+      .set({
+        ...(patch.botId !== undefined ? { botId: patch.botId } : {}),
+        ...(patch.status !== undefined ? { status: patch.status } : {}),
+        ...(patch.statusDetail !== undefined
+          ? { statusDetail: patch.statusDetail }
+          : {}),
+        ...(patch.lastBotEventAt !== undefined
+          ? { lastBotEventAt: new Date(patch.lastBotEventAt) }
+          : {}),
+        ...(patch.recordingId !== undefined
+          ? { recordingId: patch.recordingId }
+          : {}),
+        ...(patch.transcriptId !== undefined
+          ? { transcriptId: patch.transcriptId }
+          : {}),
+        ...(patch.meetingId !== undefined
+          ? { meetingId: patch.meetingId }
+          : {}),
+        ...(patch.error !== undefined ? { error: patch.error } : {}),
+        updatedAt: new Date(),
+      })
+      .where(eq(meetingCapture.id, id))
+      .returning();
+    return row ? toCapture(row) : null;
   }
 
   async saveTranscript(input: TranscriptInput) {
@@ -203,17 +292,157 @@ export class PostgresKnowledgeRepository implements KnowledgeRepository {
           set: { title: input.title, participants },
         })
         .returning({ id: meeting.id });
-      await tx.delete(utterance).where(eq(utterance.meetingId, saved.id));
       if (input.utterances.length) {
-        await tx.insert(utterance).values(
-          input.utterances.map((item, ordinal) => ({
-            ...item,
-            meetingId: saved.id,
-            ordinal,
-          })),
-        );
+        for (const [ordinal, item] of input.utterances.entries()) {
+          await tx
+            .insert(utterance)
+            .values({ ...item, meetingId: saved.id, ordinal })
+            .onConflictDoUpdate({
+              target: [utterance.meetingId, utterance.ordinal],
+              set: {
+                speaker: item.speaker,
+                startSeconds: item.startSeconds,
+                endSeconds: item.endSeconds,
+                text: item.text,
+              },
+            });
+        }
       }
       return saved.id;
+    });
+  }
+
+  async saveExtractedClaims(
+    meetingId: string,
+    extractedEntities: ExtractedEntityInput[],
+  ) {
+    return this.db.transaction(async (tx) => {
+      const [sourceMeeting] = await tx
+        .select({ startedAt: meeting.startedAt })
+        .from(meeting)
+        .where(eq(meeting.id, meetingId));
+      if (!sourceMeeting) throw new Error(`Meeting ${meetingId} was not found`);
+
+      const meetingUtterances = await tx
+        .select({ id: utterance.id })
+        .from(utterance)
+        .where(eq(utterance.meetingId, meetingId));
+      const validEvidence = new Set(meetingUtterances.map((item) => item.id));
+      let insertedClaims = 0;
+
+      for (const extractedEntity of extractedEntities) {
+        const [subject] = await tx
+          .insert(entity)
+          .values({
+            slug: extractedEntity.slug,
+            name: extractedEntity.name,
+            kind: extractedEntity.kind,
+            description: extractedEntity.description,
+            aliases: extractedEntity.aliases,
+            updatedAt: sourceMeeting.startedAt,
+          })
+          .onConflictDoUpdate({
+            target: entity.slug,
+            set: {
+              name: extractedEntity.name,
+              kind: extractedEntity.kind,
+              description: extractedEntity.description,
+              aliases: extractedEntity.aliases,
+              updatedAt: sourceMeeting.startedAt,
+            },
+          })
+          .returning({ id: entity.id });
+
+        for (const extractedClaim of extractedEntity.claims) {
+          const evidenceIds = extractedClaim.evidenceUtteranceIds.filter((id) =>
+            validEvidence.has(id),
+          );
+          if (!evidenceIds.length) continue;
+
+          const [duplicate] = await tx
+            .select({ id: claim.id })
+            .from(claim)
+            .where(
+              and(
+                eq(claim.entityId, subject.id),
+                eq(claim.text, extractedClaim.text),
+              ),
+            );
+          if (duplicate) {
+            await tx
+              .insert(claimEvidence)
+              .values(
+                evidenceIds.map((utteranceId) => ({
+                  claimId: duplicate.id,
+                  utteranceId,
+                })),
+              )
+              .onConflictDoNothing();
+            continue;
+          }
+
+          const relatedClaimId = extractedClaim.relatedClaimId;
+          const [relatedClaim] = relatedClaimId
+            ? await tx
+                .select({ id: claim.id, state: claim.state })
+                .from(claim)
+                .where(
+                  and(
+                    eq(claim.id, relatedClaimId),
+                    eq(claim.entityId, subject.id),
+                  ),
+                )
+            : [];
+          const relationship = relatedClaim
+            ? extractedClaim.relationship
+            : "new";
+          const [savedClaim] = await tx
+            .insert(claim)
+            .values({
+              entityId: subject.id,
+              text: extractedClaim.text,
+              state: relationship === "disputes" ? "disputed" : "active",
+              confidence: extractedClaim.confidence,
+              supersedesClaimId:
+                relationship === "supersedes" ? relatedClaim?.id : undefined,
+              templateId: "neutral-v1",
+              recordedAt: sourceMeeting.startedAt,
+            })
+            .returning({ id: claim.id, state: claim.state });
+          await tx.insert(claimEvidence).values(
+            evidenceIds.map((utteranceId) => ({
+              claimId: savedClaim.id,
+              utteranceId,
+            })),
+          );
+          await tx.insert(claimTransition).values({
+            claimId: savedClaim.id,
+            toState: savedClaim.state,
+            reason: "Extracted from cited meeting evidence by AI",
+            meetingId,
+            changedAt: sourceMeeting.startedAt,
+          });
+
+          if (relationship === "supersedes" && relatedClaim) {
+            await tx
+              .update(claim)
+              .set({ state: "superseded" })
+              .where(eq(claim.id, relatedClaim.id));
+            if (relatedClaim.state !== "superseded") {
+              await tx.insert(claimTransition).values({
+                claimId: relatedClaim.id,
+                fromState: relatedClaim.state,
+                toState: "superseded",
+                reason: `Superseded by claim ${savedClaim.id}`,
+                meetingId,
+                changedAt: sourceMeeting.startedAt,
+              });
+            }
+          }
+          insertedClaims += 1;
+        }
+      }
+      return insertedClaims;
     });
   }
 
@@ -268,4 +497,21 @@ export class PostgresKnowledgeRepository implements KnowledgeRepository {
     }
     return result;
   }
+}
+
+function toCapture(row: typeof meetingCapture.$inferSelect): MeetingCapture {
+  return {
+    id: row.id,
+    title: row.title,
+    meetingUrl: row.meetingUrl,
+    joinAt: row.joinAt.toISOString(),
+    botId: row.botId ?? undefined,
+    status: row.status,
+    statusDetail: row.statusDetail ?? undefined,
+    lastBotEventAt: row.lastBotEventAt?.toISOString(),
+    recordingId: row.recordingId ?? undefined,
+    transcriptId: row.transcriptId ?? undefined,
+    meetingId: row.meetingId ?? undefined,
+    error: row.error ?? undefined,
+  };
 }

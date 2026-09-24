@@ -1,11 +1,11 @@
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 import { getRepository } from "@/data";
-import { RecallClient } from "@/integrations/recall/client";
-import type { RecallTranscriptDoneEvent } from "@/integrations/recall/types";
 import {
+  processRecallWebhook,
   readRecallHeaders,
+  type RecallWebhookEvent,
   verifyRecallWebhook,
-} from "@/integrations/recall/verify";
+} from "@/lib/recall";
 
 export const runtime = "nodejs";
 
@@ -36,38 +36,30 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid event" }, { status: 400 });
 
   const repository = getRepository();
-  if (await repository.hasWebhook(verificationHeaders.id)) {
-    return NextResponse.json({ ok: true, duplicate: true });
-  }
-
-  if (payload.event === "transcript.done") {
-    const apiKey = process.env.RECALL_API_KEY;
-    if (!apiKey)
-      return NextResponse.json(
-        { error: "Recall API is not configured" },
-        { status: 503 },
-      );
-    const event = payload as RecallTranscriptDoneEvent;
-    const transcript = await new RecallClient(
-      apiKey,
-      process.env.RECALL_REGION ?? "us-west-2",
-    ).getCompletedTranscript({
-      transcriptId: event.data.transcript.id,
-      recordingId: event.data.recording?.id,
-      botId: event.data.bot?.id,
-    });
-    await repository.saveTranscript(transcript);
-  }
-
-  await repository.recordWebhook(
+  const accepted = await repository.recordWebhook(
     verificationHeaders.id,
     payload.event,
     payload,
   );
-  return NextResponse.json({ ok: true });
+  if (!accepted) {
+    return NextResponse.json({ ok: true, duplicate: true });
+  }
+
+  after(async () => {
+    try {
+      await processRecallWebhook(payload);
+      await repository.completeWebhook(verificationHeaders.id);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(`[webhook] ${payload.event} failed`, message);
+      await repository.completeWebhook(verificationHeaders.id, message);
+    }
+  });
+
+  return NextResponse.json({ ok: true }, { status: 202 });
 }
 
-function isEvent(value: unknown): value is { event: string; data: unknown } {
+function isEvent(value: unknown): value is RecallWebhookEvent {
   return Boolean(
     value &&
     typeof value === "object" &&

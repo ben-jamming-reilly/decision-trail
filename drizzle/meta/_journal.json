@@ -15,6 +15,13 @@
       "when": 1790199384976,
       "tag": "0001_hard_mysterio",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1790224176213,
+      "tag": "0002_rich_blue_marvel",
+      "breakpoints": true
     }
   ]
 }
